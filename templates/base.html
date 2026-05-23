@@ -1,0 +1,136 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% block title %}Inventory Management System{% endblock %}</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+</head>
+<body>
+
+<div class="app-container">
+
+    <!-- Sidebar -->
+    <aside class="sidebar">
+        <div class="sidebar-header">
+            <h2>📦 IMS</h2>
+            <p>Inventory System</p>
+        </div>
+        <nav class="sidebar-nav">
+    <a href="/dashboard"        class="nav-item">📊 Dashboard</a>
+    <a href="/products"         class="nav-item">🗂️ Products</a>
+    <a href="/suppliers"        class="nav-item">🏭 Suppliers</a>
+    <a href="/sales"            class="nav-item">💰 Sales</a>
+    <a href="/billing"          class="nav-item">🧾 Billing (POS)</a>
+    <a href="/bill-history"     class="nav-item">📜 Bill History</a>
+    <a href="/pending-payments" class="nav-item">⏳ Pending Payments</a>
+    <a href="/daily-summary"    class="nav-item">📈 Daily Summary</a>
+     </nav>
+    </aside>
+
+    <!-- Main Content -->
+    <main class="main-content">
+
+        <!-- Top Bar -->
+        <div class="top-bar">
+            <h1>{% block page_title %}Dashboard{% endblock %}</h1>
+            <div class="user-info">
+                <span id="currentDate"></span>
+            </div>
+        </div>
+
+        <!-- Page Content — only ONE block content here -->
+        <div class="content-container {% block container_class %}{% endblock %}">
+            {% block content %}{% endblock %}
+        </div>
+
+    </main>
+
+</div>
+
+<!-- Shared Modal -->
+<div id="modalOverlay" class="modal-overlay" style="display:none;">
+    <div class="modal">
+        <div class="modal-header">
+            <h3 id="modalTitle">Modal</h3>
+            <button class="modal-close" onclick="closeModal()">&times;</button>
+        </div>
+        <div class="modal-body" id="modalBody"></div>
+        <div class="modal-footer">
+            <button class="btn-secondary" onclick="closeModal()">Cancel</button>
+            <button class="btn-primary" id="modalSaveBtn">Save</button>
+        </div>
+    </div>
+</div>
+
+<!-- Toast -->
+<div id="toast" class="toast" style="display:none;"></div>
+
+<script>
+    document.addEventListener('DOMContentLoaded', function () {
+        // Set date
+        const el = document.getElementById('currentDate');
+        if (el) {
+            el.textContent = new Date().toLocaleDateString('en-US', {
+                weekday: 'long', year: 'numeric', month: 'long', day: 'numeric'
+            });
+        }
+
+        // Highlight active nav link
+        const path = window.location.pathname;
+        document.querySelectorAll('.nav-item').forEach(function(item) {
+            if (item.getAttribute('href') === path) item.classList.add('active');
+        });
+
+        // Close modal on outside click
+        document.getElementById('modalOverlay').addEventListener('click', function(e) {
+            if (e.target === this) closeModal();
+        });
+    });
+
+    function showToast(message, type) {
+        type = type || 'success';
+        const toast = document.getElementById('toast');
+        toast.textContent = message;
+        toast.className = 'toast ' + type;
+        toast.style.display = 'block';
+        setTimeout(function() { toast.style.display = 'none'; }, 3000);
+    }
+
+    function openModal(title, formHTML, onSave) {
+        document.getElementById('modalTitle').textContent = title;
+        document.getElementById('modalBody').innerHTML = formHTML;
+        document.getElementById('modalOverlay').style.display = 'flex';
+        const oldBtn = document.getElementById('modalSaveBtn');
+        const newBtn = oldBtn.cloneNode(true);
+        oldBtn.parentNode.replaceChild(newBtn, oldBtn);
+        newBtn.onclick = onSave;
+    }
+
+    function closeModal() {
+        document.getElementById('modalOverlay').style.display = 'none';
+    }
+
+    function escapeHtml(str) {
+        if (!str) return '';
+        return String(str)
+            .replace(/&/g, '&amp;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;')
+            .replace(/"/g, '&quot;');
+    }
+     // Safe date formatter — prevents timezone shift
+    function fmtDate(dateStr) {
+        if (!dateStr) return '—';
+        // Append T00:00:00 to force local timezone parsing
+        var d = new Date(dateStr.substring(0, 10) + 'T00:00:00');
+        if (isNaN(d.getTime())) return dateStr; // return raw if invalid
+        return d.toLocaleDateString('en-PK', {
+            year: 'numeric', month: 'short', day: 'numeric'
+        });
+    }
+</script>
+
+{% block scripts %}{% endblock %}
+</body>
+</html>

@@ -1,0 +1,178 @@
+{% extends "base.html" %}
+{% block title %}Pending Payments - IMS{% endblock %}
+{% block page_title %}Pending Payments{% endblock %}
+
+{% block content %}
+<div id="pendingSummary" style="display:flex;gap:14px;flex-wrap:wrap;margin-bottom:16px;"></div>
+
+<div style="background:#fff;border-radius:10px;padding:12px 16px;box-shadow:0 1px 3px rgba(0,0,0,0.08);
+            margin-bottom:16px;display:flex;gap:10px;flex-wrap:wrap;align-items:center;">
+    <input type="text" id="searchCustomer" placeholder="🔍 Search customer or bill..."
+           oninput="applyFilter()"
+           style="padding:8px 12px;border:1px solid #e5e7eb;border-radius:8px;font-size:13px;width:220px;">
+    <select id="filterPStatus" onchange="applyFilter()"
+            style="padding:8px 12px;border:1px solid #e5e7eb;border-radius:8px;font-size:13px;">
+        <option value="all">All Status</option>
+        <option value="pending">Pending</option>
+        <option value="partial">Partial</option>
+        <option value="paid">Fully Paid</option>
+    </select>
+    <button onclick="applyFilter()"
+            style="padding:8px 16px;background:#1e293b;color:#fff;border:none;border-radius:8px;font-size:13px;cursor:pointer;">Filter</button>
+</div>
+
+<div class="table-container" id="pendingTableContainer">
+    <div class="loading-msg">Loading pending payments...</div>
+</div>
+
+<!-- Pay Modal -->
+<div id="payOverlay" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.5);
+     z-index:2000;align-items:center;justify-content:center;">
+    <div style="background:#fff;border-radius:12px;width:440px;max-width:95%;padding:24px;">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;">
+            <h3 style="font-size:15px;font-weight:600;margin:0;">💳 Record Payment</h3>
+            <button onclick="closePayModal()"
+                    style="background:none;border:none;font-size:20px;cursor:pointer;color:#6b7280;">&times;</button>
+        </div>
+        <div id="payModalBody"></div>
+    </div>
+</div>
+
+<script>
+    var allPayments = [];
+
+    function fmt(n) { return '₨' + parseFloat(n||0).toLocaleString('en-PK',{minimumFractionDigits:2}); }
+
+    async function loadPendingPayments() {
+        try {
+            var res = await fetch('/api/pending-payments');
+            allPayments = await res.json();
+            renderSummary(allPayments);
+            renderTable(allPayments);
+        } catch(e) {
+            document.getElementById('pendingTableContainer').innerHTML =
+                '<p style="color:#dc2626;text-align:center;padding:20px;">Failed to load.</p>';
+        }
+    }
+
+    function renderSummary(payments) {
+        var totalDue  = payments.reduce(function(s,p){ return s+parseFloat(p.amount_due);  },0);
+        var totalPaid = payments.reduce(function(s,p){ return s+parseFloat(p.amount_paid); },0);
+        var remaining = totalDue - totalPaid;
+        var pending   = payments.filter(function(p){ return p.status==='pending'; }).length;
+        var partial   = payments.filter(function(p){ return p.status==='partial'; }).length;
+        document.getElementById('pendingSummary').innerHTML =
+            card('📋 Total Records',   payments.length,  '#fff') +
+            card('💰 Total Due',       fmt(totalDue),    '#fff') +
+            card('✅ Total Collected', fmt(totalPaid),   '#f0fdf4') +
+            card('⚠️ Outstanding',    fmt(remaining),   remaining>0?'#fef2f2':'#f0fdf4') +
+            card('⏳ Pending',         pending,          pending>0?'#fef3c7':'#fff') +
+            card('🔄 Partial',         partial,          partial>0?'#eff6ff':'#fff');
+    }
+
+    function card(label,val,bg) {
+        return '<div style="background:'+bg+';padding:12px 16px;border-radius:8px;box-shadow:0 1px 3px rgba(0,0,0,0.08);min-width:130px;">' +
+               '<div style="font-size:11px;color:#6b7280;margin-bottom:4px;">'+label+'</div>' +
+               '<div style="font-size:16px;font-weight:700;color:#111827;">'+val+'</div></div>';
+    }
+
+    function renderTable(payments) {
+        if (!payments.length) {
+            document.getElementById('pendingTableContainer').innerHTML = '<p class="empty-msg">No pending payment records found.</p>';
+            return;
+        }
+        var rows = payments.map(function(p){
+            var remaining = parseFloat(p.amount_due) - parseFloat(p.amount_paid);
+            var pct = Math.min(100, Math.round((parseFloat(p.amount_paid)/parseFloat(p.amount_due))*100));
+            var statusBadge = {
+                pending: '<span style="background:#fef3c7;color:#92400e;padding:2px 8px;border-radius:4px;font-size:11px;">⏳ Pending</span>',
+                partial: '<span style="background:#dbeafe;color:#1e40af;padding:2px 8px;border-radius:4px;font-size:11px;">🔄 Partial</span>',
+                paid:    '<span style="background:#d1fae5;color:#065f46;padding:2px 8px;border-radius:4px;font-size:11px;">✅ Paid</span>'
+            }[p.status] || p.status;
+            var progressBar =
+                '<div style="background:#e5e7eb;border-radius:4px;height:6px;margin-top:4px;">' +
+                '<div style="background:'+(pct>=100?'#22c55e':pct>0?'#3b82f6':'#e5e7eb')+
+                ';width:'+pct+'%;height:100%;border-radius:4px;"></div></div>' +
+                '<div style="font-size:10px;color:#6b7280;margin-top:2px;">'+pct+'% collected</div>';
+            var actionBtn = p.status !== 'paid'
+                ? '<button class="btn-small" style="background:#1e293b;color:#fff;" onclick="openPayModal('+p.payment_id+')">💳 Pay</button>'
+                : '<span style="font-size:12px;color:#22c55e;font-weight:600;">✅ Cleared</span>';
+            return '<tr>' +
+                '<td><strong>'+escapeHtml(p.bill_number)+'</strong><br>' +
+                '<span style="font-size:11px;color:#6b7280;">'+fmtDate(p.bill_date)+'</span></td>' +
+                '<td>'+escapeHtml(p.customer_name)+'<br>' +
+                '<span style="font-size:11px;color:#6b7280;">'+escapeHtml(p.customer_phone||'—')+'</span></td>' +
+                '<td style="font-weight:600;">'+fmt(p.amount_due)+'</td>' +
+                '<td style="color:#22c55e;font-weight:600;">'+fmt(p.amount_paid)+'</td>' +
+                '<td style="color:#dc2626;font-weight:600;">'+fmt(remaining)+'</td>' +
+                '<td>'+(p.due_date?fmtDate(p.due_date):'—')+'</td>' +
+                '<td>'+statusBadge+progressBar+'</td>' +
+                '<td>'+actionBtn+'</td></tr>';
+        }).join('');
+        document.getElementById('pendingTableContainer').innerHTML =
+            '<table><thead><tr><th>Bill</th><th>Customer</th><th>Amount Due</th>' +
+            '<th>Paid</th><th>Remaining</th><th>Due Date</th><th>Status</th><th>Action</th>' +
+            '</tr></thead><tbody>'+rows+'</tbody></table>';
+    }
+
+    function applyFilter() {
+        var q      = document.getElementById('searchCustomer').value.toLowerCase();
+        var status = document.getElementById('filterPStatus').value;
+        var filtered = allPayments.filter(function(p){
+            if (q && !(p.customer_name.toLowerCase().includes(q) || p.bill_number.toLowerCase().includes(q))) return false;
+            if (status !== 'all' && p.status !== status) return false;
+            return true;
+        });
+        renderSummary(filtered);
+        renderTable(filtered);
+    }
+
+    function openPayModal(paymentId) {
+        var p = allPayments.find(function(x){ return x.payment_id===paymentId; });
+        if (!p) return;
+        var remaining = parseFloat(p.amount_due) - parseFloat(p.amount_paid);
+        document.getElementById('payModalBody').innerHTML =
+            '<div style="background:#f9fafb;border-radius:8px;padding:12px;margin-bottom:16px;font-size:13px;">' +
+            '<div><strong>Bill:</strong> '+escapeHtml(p.bill_number)+'</div>' +
+            '<div><strong>Customer:</strong> '+escapeHtml(p.customer_name)+'</div>' +
+            '<div><strong>Total Due:</strong> <span style="color:#dc2626;font-weight:700;">'+fmt(p.amount_due)+'</span></div>' +
+            '<div><strong>Already Paid:</strong> <span style="color:#22c55e;">'+fmt(p.amount_paid)+'</span></div>' +
+            '<div><strong>Remaining:</strong> <span style="color:#f59e0b;font-weight:700;">'+fmt(remaining)+'</span></div>' +
+            '</div>' +
+            /* FIX: no default value — user must type actual amount received */
+            '<div class="form-group"><label>Amount Receiving Now (₨) *</label>' +
+            '<input type="number" id="pay_amount" placeholder="Enter amount..." ' +
+            'min="0.01" max="'+remaining.toFixed(2)+'" step="0.01"></div>' +
+            '<div class="form-group"><label>Notes</label>' +
+            '<input type="text" id="pay_notes" placeholder="e.g. Cash received"></div>' +
+            '<button onclick="submitPayment('+paymentId+')" ' +
+            'style="width:100%;padding:10px;background:#1e293b;color:#fff;border:none;' +
+            'border-radius:8px;font-size:13px;font-weight:600;cursor:pointer;">✅ Confirm Payment</button>';
+        document.getElementById('payOverlay').style.display = 'flex';
+    }
+
+    async function submitPayment(paymentId) {
+        var amount = parseFloat(document.getElementById('pay_amount').value);
+        var notes  = document.getElementById('pay_notes').value;
+        if (!amount || amount <= 0) { showToast('Enter a valid amount', 'error'); return; }
+        try {
+            var res = await fetch('/api/pending-payments/' + paymentId, {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ amount_paid: amount, notes: notes })
+            });
+            var result = await res.json();
+            if (!res.ok) throw new Error(result.error || 'Failed');
+            /* FIX: show actual status returned from backend (paid / partial / pending) */
+            var statusMsg = { paid:'✅ Fully Paid', partial:'🔄 Partial Payment Recorded', pending:'⏳ Still Pending' };
+            showToast(statusMsg[result.status] || 'Payment recorded', 'success');
+            closePayModal();
+            loadPendingPayments();
+        } catch(e) { showToast(e.message, 'error'); }
+    }
+
+    function closePayModal() { document.getElementById('payOverlay').style.display = 'none'; }
+
+    document.addEventListener('DOMContentLoaded', loadPendingPayments);
+</script>
+{% endblock %}

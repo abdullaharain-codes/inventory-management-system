@@ -1,0 +1,368 @@
+{% extends "base.html" %}
+{% block title %}Bill History - IMS{% endblock %}
+{% block page_title %}Bill History{% endblock %}
+
+{% block content %}
+<div id="billSummaryBar" style="display:flex;gap:14px;flex-wrap:wrap;margin-bottom:16px;"></div>
+
+<div style="background:#fff;border-radius:10px;padding:14px 16px;box-shadow:0 1px 3px rgba(0,0,0,0.08);
+            margin-bottom:16px;display:flex;gap:10px;flex-wrap:wrap;align-items:center;">
+    <input type="text" id="searchBill" placeholder="🔍 Search bill no. or customer..."
+           style="padding:8px 12px;border:1px solid #e5e7eb;border-radius:8px;font-size:13px;width:220px;">
+    <select id="filterStatus" style="padding:8px 12px;border:1px solid #e5e7eb;border-radius:8px;font-size:13px;">
+        <option value="all">All Status</option>
+        <option value="paid">Paid</option>
+        <option value="pending">Pending</option>
+    </select>
+    <select id="filterMethod" style="padding:8px 12px;border:1px solid #e5e7eb;border-radius:8px;font-size:13px;">
+        <option value="all">All Methods</option>
+        <option value="cash">Cash</option>
+        <option value="card">Card</option>
+        <option value="online">Online</option>
+        <option value="credit">Credit</option>
+    </select>
+    <input type="date" id="filterFrom" style="padding:8px 10px;border:1px solid #e5e7eb;border-radius:8px;font-size:13px;">
+    <input type="date" id="filterTo"   style="padding:8px 10px;border:1px solid #e5e7eb;border-radius:8px;font-size:13px;">
+    <button onclick="applyFilters()" style="padding:8px 16px;background:#1e293b;color:#fff;border:none;border-radius:8px;font-size:13px;cursor:pointer;">Apply</button>
+    <button onclick="resetFilters()"  style="padding:8px 16px;background:#f9fafb;color:#374151;border:1px solid #e5e7eb;border-radius:8px;font-size:13px;cursor:pointer;">Reset</button>
+</div>
+
+<div class="table-container" id="billsTableContainer">
+    <div class="loading-msg">Loading bills...</div>
+</div>
+
+<!-- Bill Detail Modal -->
+<div id="detailOverlay" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.5);z-index:2000;align-items:center;justify-content:center;">
+    <div style="background:#fff;border-radius:12px;width:640px;max-width:96%;max-height:92vh;display:flex;flex-direction:column;overflow:hidden;">
+        <div style="padding:14px 18px;border-bottom:1px solid #e5e7eb;display:flex;justify-content:space-between;align-items:center;flex-shrink:0;">
+            <h3 id="detailTitle" style="font-size:15px;font-weight:600;margin:0;"></h3>
+            <div style="display:flex;gap:8px;align-items:center;">
+                <button onclick="printDetail()" style="padding:6px 14px;background:#1e293b;color:#fff;border:none;border-radius:6px;font-size:12px;cursor:pointer;">🖨️ Print</button>
+                <button onclick="closeDetail()" style="background:none;border:none;font-size:20px;cursor:pointer;color:#6b7280;">&times;</button>
+            </div>
+        </div>
+        <div style="display:flex;border-bottom:1px solid #e5e7eb;flex-shrink:0;">
+            <button class="detail-tab active" data-tab="items"          onclick="switchTab('items')">📋 Items</button>
+            <button class="detail-tab"        data-tab="edit"           onclick="switchTab('edit')">✏️ Edit Bill</button>
+            <button class="detail-tab"        data-tab="refund"         onclick="switchTab('refund')">↩️ Refund</button>
+            <button class="detail-tab"        data-tab="refund-history" onclick="switchTab('refund-history')">📄 Refund History</button>
+        </div>
+        <div id="detailBody" style="flex:1;overflow-y:auto;padding:18px;"></div>
+    </div>
+</div>
+
+<!-- Refund Confirm Modal -->
+<div id="refundConfirmOverlay" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.6);z-index:3000;align-items:center;justify-content:center;">
+    <div style="background:#fff;border-radius:10px;width:420px;padding:24px;">
+        <h3 style="font-size:15px;font-weight:600;margin-bottom:16px;">Confirm Refund</h3>
+        <div id="refundConfirmBody"></div>
+        <div style="display:flex;justify-content:flex-end;gap:8px;margin-top:20px;">
+            <button onclick="closeRefundConfirm()" style="padding:8px 16px;border:1px solid #e5e7eb;border-radius:6px;background:#fff;cursor:pointer;font-size:13px;">Cancel</button>
+            <button id="refundConfirmBtn" style="padding:8px 16px;background:#dc2626;color:#fff;border:none;border-radius:6px;cursor:pointer;font-size:13px;">Process Refund</button>
+        </div>
+    </div>
+</div>
+
+<style>
+    .detail-tab { padding:10px 18px;border:none;background:none;font-size:13px;cursor:pointer;color:#6b7280;border-bottom:2px solid transparent;transition:all 0.15s; }
+    .detail-tab:hover  { color:#111827; }
+    .detail-tab.active { color:#1e293b;border-bottom-color:#1e293b;font-weight:600; }
+    .refund-row { display:flex;align-items:center;gap:8px;padding:8px 0;border-bottom:1px solid #f3f4f6; }
+    .refund-row:last-child { border-bottom:none; }
+    @media print {
+        body > *:not(#detailOverlay) { display:none !important; }
+        #detailOverlay { position:static !important;background:white !important;display:block !important; }
+        #detailOverlay > div { box-shadow:none !important;max-height:none !important;width:100% !important; }
+        .detail-tab, #detailOverlay > div > div:first-child, #detailOverlay > div > div:nth-child(2) { display:none !important; }
+    }
+</style>
+
+<script>
+    var allBills = [], currentBill = null;
+
+    function fmt(n) { return '₨' + parseFloat(n || 0).toLocaleString('en-PK', { minimumFractionDigits: 2 }); }
+
+    async function loadBills() {
+        try {
+            allBills = await fetch('/api/bills').then(r => r.json());
+            renderSummaryBar(allBills);
+            renderTable(allBills);
+        } catch(e) {
+            document.getElementById('billsTableContainer').innerHTML = '<p style="color:#dc2626;padding:20px;text-align:center;">Failed to load bills.</p>';
+        }
+    }
+
+    function renderSummaryBar(bills) {
+        /* FIX: grand_total already includes GST after DB fix — no manual addition needed */
+        var totalRevenue = bills.reduce(function(s,b){ return s + parseFloat(b.grand_total || 0); }, 0);
+        var totalGst     = bills.reduce(function(s,b){ return s + parseFloat(b.gst_amount  || 0); }, 0);
+        var pending      = bills.filter(function(b){ return b.payment_status === 'pending'; }).length;
+        document.getElementById('billSummaryBar').innerHTML =
+            miniCard('📋 Total Bills',   bills.length) +
+            miniCard('💰 Total Revenue', fmt(totalRevenue)) +
+            miniCard('📊 Total GST',     fmt(totalGst)) +
+            miniCard('⏳ Pending',       pending, pending > 0 ? '#fef3c7' : '');
+    }
+
+    function miniCard(label, value, bg) {
+        return '<div style="background:' + (bg||'#fff') + ';padding:12px 18px;border-radius:8px;box-shadow:0 1px 3px rgba(0,0,0,0.08);font-size:13px;min-width:140px;">' +
+               '<div style="color:#6b7280;margin-bottom:4px;">' + label + '</div>' +
+               '<div style="font-size:18px;font-weight:700;color:#111827;">' + value + '</div></div>';
+    }
+
+    function renderTable(bills) {
+        if (!bills.length) { document.getElementById('billsTableContainer').innerHTML = '<p class="empty-msg">No bills found.</p>'; return; }
+        var mb = { cash:'💵', card:'💳', online:'📱', credit:'📋' };
+        var rows = bills.map(function(b){
+            var statusBadge = b.payment_status === 'pending'
+                ? '<span style="background:#fef3c7;color:#92400e;padding:2px 8px;border-radius:4px;font-size:11px;">Pending</span>'
+                : '<span style="background:#d1fae5;color:#065f46;padding:2px 8px;border-radius:4px;font-size:11px;">Paid</span>';
+            return '<tr>' +
+                '<td><strong>' + escapeHtml(b.bill_number) + '</strong></td>' +
+                '<td>' + fmtDate(b.bill_date) + '</td>' +
+                '<td>' + escapeHtml(b.customer_name || '—') + '</td>' +
+                '<td>' + (mb[b.payment_method]||'') + ' ' + (b.payment_method||'—') + '</td>' +
+                '<td>' + fmt(b.subtotal) + '</td>' +
+                '<td style="color:#059669;">+' + fmt(b.gst_amount) + '</td>' +
+                '<td style="color:#dc2626;">-' + fmt(b.discount_amount) + '</td>' +
+                '<td><strong>' + fmt(b.grand_total) + '</strong></td>' +
+                '<td>' + statusBadge + '</td>' +
+                '<td>' +
+                '<button class="btn-small" style="background:#eff6ff;color:#1d4ed8;border:1px solid #bfdbfe;" onclick="openDetail(' + b.bill_id + ')">👁 View</button>' +
+                '<button class="btn-small btn-danger" onclick="deleteBill(' + b.bill_id + ',\'' + escapeHtml(b.bill_number) + '\')" style="margin-left:4px;">🗑</button>' +
+                '</td></tr>';
+        }).join('');
+        document.getElementById('billsTableContainer').innerHTML =
+            '<table><thead><tr><th>Bill No.</th><th>Date</th><th>Customer</th><th>Method</th>' +
+            '<th>Subtotal</th><th>GST</th><th>Discount</th><th>Total</th><th>Status</th><th>Actions</th>' +
+            '</tr></thead><tbody>' + rows + '</tbody></table>';
+    }
+
+    function applyFilters() {
+        var search = document.getElementById('searchBill').value.toLowerCase();
+        var status = document.getElementById('filterStatus').value;
+        var method = document.getElementById('filterMethod').value;
+        var from   = document.getElementById('filterFrom').value;
+        var to     = document.getElementById('filterTo').value;
+        var filtered = allBills.filter(function(b){
+            if (search && !(b.bill_number.toLowerCase().includes(search) || (b.customer_name && b.customer_name.toLowerCase().includes(search)))) return false;
+            if (status !== 'all' && b.payment_status !== status) return false;
+            if (method !== 'all' && b.payment_method !== method) return false;
+            if (from && b.bill_date < from) return false;
+            if (to   && b.bill_date > to)   return false;
+            return true;
+        });
+        renderSummaryBar(filtered);
+        renderTable(filtered);
+    }
+
+    function resetFilters() {
+        document.getElementById('searchBill').value = '';
+        document.getElementById('filterStatus').value = 'all';
+        document.getElementById('filterMethod').value = 'all';
+        document.getElementById('filterFrom').value = '';
+        document.getElementById('filterTo').value = '';
+        renderSummaryBar(allBills); renderTable(allBills);
+    }
+
+    async function openDetail(billId) {
+        try {
+            currentBill = await fetch('/api/bills/' + billId).then(r => r.json());
+            document.getElementById('detailTitle').textContent = 'Bill: ' + currentBill.bill_number;
+            document.getElementById('detailOverlay').style.display = 'flex';
+            switchTab('items');
+        } catch(e) { showToast('Failed to load bill details', 'error'); }
+    }
+
+    function closeDetail() { document.getElementById('detailOverlay').style.display = 'none'; currentBill = null; }
+
+    function switchTab(tab) {
+        document.querySelectorAll('.detail-tab').forEach(function(btn){
+            btn.classList.toggle('active', btn.getAttribute('data-tab') === tab);
+        });
+        var body = document.getElementById('detailBody');
+        if      (tab === 'items')          renderItemsTab(body);
+        else if (tab === 'edit')           renderEditTab(body);
+        else if (tab === 'refund')         renderRefundTab(body);
+        else if (tab === 'refund-history') renderRefundHistoryTab(body);
+    }
+
+    function renderItemsTab(body) {
+        if (!currentBill) return;
+        var b = currentBill;
+        var mb = { cash:'💵 Cash', card:'💳 Card', online:'📱 Online', credit:'📋 Credit' };
+        var statusBadge = b.payment_status === 'pending'
+            ? '<span style="background:#fef3c7;color:#92400e;padding:2px 8px;border-radius:4px;font-size:11px;">⏳ Pending</span>'
+            : '<span style="background:#d1fae5;color:#065f46;padding:2px 8px;border-radius:4px;font-size:11px;">✅ Paid</span>';
+        var itemRows = (b.items||[]).map(function(item, i){
+            return '<tr>' +
+                '<td style="padding:9px 12px;">' + (i+1) + '</td>' +
+                '<td style="padding:9px 12px;">' + escapeHtml(item.product_name) + '</td>' +
+                '<td style="padding:9px 12px;text-align:center;">' + item.quantity + '</td>' +
+                '<td style="padding:9px 12px;text-align:right;">' + fmt(item.unit_price) + '</td>' +
+                '<td style="padding:9px 12px;text-align:right;font-weight:600;">' + fmt(item.item_total) + '</td></tr>';
+        }).join('');
+        /* FIX: grand_total from DB already includes GST */
+        var discRow = parseFloat(b.discount_percent) > 0
+            ? '<div style="display:flex;justify-content:space-between;font-size:13px;margin-bottom:5px;color:#dc2626;"><span>Discount (' + b.discount_percent + '%)</span><span>-' + fmt(b.discount_amount) + '</span></div>' : '';
+        var gstRow  = parseFloat(b.gst_percent) > 0
+            ? '<div style="display:flex;justify-content:space-between;font-size:13px;margin-bottom:5px;color:#059669;"><span>GST (' + b.gst_percent + '%)</span><span>+' + fmt(b.gst_amount) + '</span></div>' : '';
+        body.innerHTML = '<div id="printArea">' +
+            '<div style="display:flex;justify-content:space-between;margin-bottom:16px;padding-bottom:14px;border-bottom:1px solid #e5e7eb;">' +
+            '<div><div style="font-size:18px;font-weight:700;">' + escapeHtml(b.bill_number) + '</div>' +
+            '<div style="font-size:13px;color:#6b7280;margin-top:3px;">Date: ' + fmtDate(b.bill_date) + '</div>' +
+            (b.customer_name ? '<div style="font-size:13px;color:#374151;margin-top:3px;">Customer: <strong>' + escapeHtml(b.customer_name) + '</strong>' + (b.customer_phone ? ' — ' + escapeHtml(b.customer_phone) : '') + '</div>' : '') +
+            '</div><div style="text-align:right;"><div style="margin-bottom:6px;">' + (mb[b.payment_method]||b.payment_method) + '</div>' + statusBadge + '</div></div>' +
+            '<table style="width:100%;border-collapse:collapse;margin-bottom:16px;">' +
+            '<thead><tr style="background:#1e293b;color:#fff;"><th style="padding:9px 12px;text-align:left;">#</th><th style="padding:9px 12px;text-align:left;">Product</th><th style="padding:9px 12px;text-align:center;">Qty</th><th style="padding:9px 12px;text-align:right;">Unit Price</th><th style="padding:9px 12px;text-align:right;">Total</th></tr></thead>' +
+            '<tbody>' + itemRows + '</tbody></table>' +
+            '<div style="border-top:2px solid #e5e7eb;padding-top:12px;max-width:280px;margin-left:auto;">' +
+            '<div style="display:flex;justify-content:space-between;font-size:13px;margin-bottom:5px;"><span style="color:#6b7280;">Subtotal</span><span>' + fmt(b.subtotal) + '</span></div>' +
+            discRow + gstRow +
+            '<div style="display:flex;justify-content:space-between;font-size:17px;font-weight:700;padding-top:10px;border-top:1px solid #e5e7eb;"><span>Grand Total</span><span>' + fmt(b.grand_total) + '</span></div>' +
+            '</div>' +
+            (b.notes ? '<div style="margin-top:14px;padding:10px;background:#f9fafb;border-radius:8px;font-size:13px;color:#374151;"><strong>Notes:</strong> ' + escapeHtml(b.notes) + '</div>' : '') +
+            '</div>';
+    }
+
+    function renderEditTab(body) {
+        if (!currentBill) return;
+        var b = currentBill;
+        body.innerHTML = '<div style="max-width:400px;">' +
+            '<div class="form-group"><label>Customer Name</label><input type="text" id="edit_customer_name" value="' + escapeHtml(b.customer_name||'') + '"></div>' +
+            '<div class="form-group"><label>Customer Phone</label><input type="text" id="edit_customer_phone" value="' + escapeHtml(b.customer_phone||'') + '"></div>' +
+            '<div class="form-group"><label>Payment Method</label><select id="edit_payment_method">' +
+            ['cash','card','online','credit'].map(function(m){ return '<option value="' + m + '"' + (b.payment_method===m?' selected':'') + '>' + m.charAt(0).toUpperCase()+m.slice(1) + '</option>'; }).join('') +
+            '</select></div>' +
+            '<div class="form-group"><label>Payment Status</label><select id="edit_payment_status">' +
+            '<option value="paid"' + (b.payment_status==='paid'?' selected':'') + '>Paid</option>' +
+            '<option value="pending"' + (b.payment_status==='pending'?' selected':'') + '>Pending</option>' +
+            '</select></div>' +
+            '<div class="form-group"><label>GST %</label><input type="number" id="edit_gst_percent" value="' + (b.gst_percent||0) + '" min="0" max="100" step="0.5"></div>' +
+            '<div class="form-group"><label>Notes</label><textarea id="edit_notes" rows="3">' + escapeHtml(b.notes||'') + '</textarea></div>' +
+            '<button onclick="saveEditBill()" style="padding:10px 24px;background:#1e293b;color:#fff;border:none;border-radius:8px;font-size:13px;font-weight:600;cursor:pointer;width:100%;">Save Changes</button>' +
+            '</div>';
+    }
+
+    async function saveEditBill() {
+        if (!currentBill) return;
+        try {
+            var res = await fetch('/api/bills/' + currentBill.bill_id, {
+                method: 'PUT', headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    customer_name:  document.getElementById('edit_customer_name').value.trim(),
+                    customer_phone: document.getElementById('edit_customer_phone').value.trim(),
+                    payment_method: document.getElementById('edit_payment_method').value,
+                    payment_status: document.getElementById('edit_payment_status').value,
+                    gst_percent:    parseFloat(document.getElementById('edit_gst_percent').value)||0,
+                    notes:          document.getElementById('edit_notes').value
+                })
+            });
+            if (!res.ok) throw new Error('Failed');
+            showToast('Bill updated successfully', 'success');
+            currentBill = await fetch('/api/bills/' + currentBill.bill_id).then(r=>r.json());
+            loadBills();
+        } catch(e) { showToast('Failed to update bill', 'error'); }
+    }
+
+    function renderRefundTab(body) {
+        if (!currentBill) return;
+        var today = new Date().toISOString().split('T')[0];
+        var opts = (currentBill.items||[]).map(function(item){
+            return '<option value="' + item.product_id + '" data-max="' + item.quantity + '" data-price="' + item.unit_price + '">' +
+                   escapeHtml(item.product_name) + ' (Qty: ' + item.quantity + ' @ ' + fmt(item.unit_price) + ')</option>';
+        }).join('');
+        body.innerHTML = '<div style="max-width:400px;">' +
+            '<div style="background:#fef3c7;border:1px solid #fbbf24;border-radius:8px;padding:10px 14px;font-size:12px;color:#92400e;margin-bottom:16px;">⚠️ Refunding will restore stock automatically.</div>' +
+            '<div class="form-group"><label>Product to Refund *</label><select id="refund_product" onchange="updateRefundAmount()"><option value="">Choose product...</option>' + opts + '</select></div>' +
+            '<div class="form-group"><label>Quantity to Return *</label><input type="number" id="refund_qty" min="1" value="1" oninput="updateRefundAmount()"></div>' +
+            '<div class="form-group"><label>Refund Amount (₨) *</label><input type="number" id="refund_amount" step="0.01" min="0"></div>' +
+            '<div class="form-group"><label>Refund Date *</label><input type="date" id="refund_date" value="' + today + '"></div>' +
+            '<div class="form-group"><label>Reason</label><textarea id="refund_reason" rows="2" placeholder="e.g. Defective product"></textarea></div>' +
+            '<button onclick="submitRefund()" style="padding:10px 24px;background:#dc2626;color:#fff;border:none;border-radius:8px;font-size:13px;font-weight:600;cursor:pointer;width:100%;">↩️ Process Refund</button>' +
+            '</div>';
+    }
+
+    function updateRefundAmount() {
+        var sel = document.getElementById('refund_product');
+        var qty = parseInt(document.getElementById('refund_qty').value)||1;
+        var opt = sel.selectedOptions[0];
+        if (!opt||!opt.value) return;
+        var price = parseFloat(opt.getAttribute('data-price'))||0;
+        var max   = parseInt(opt.getAttribute('data-max'))||1;
+        if (qty > max) { document.getElementById('refund_qty').value = max; qty = max; }
+        document.getElementById('refund_amount').value = (qty * price).toFixed(2);
+    }
+
+    function submitRefund() {
+        var productId = document.getElementById('refund_product').value;
+        var qty    = parseInt(document.getElementById('refund_qty').value);
+        var amount = parseFloat(document.getElementById('refund_amount').value);
+        var date   = document.getElementById('refund_date').value;
+        var reason = document.getElementById('refund_reason').value;
+        if (!productId||!qty||!amount||!date) { showToast('Please fill all required fields','error'); return; }
+        var sel = document.getElementById('refund_product');
+        var optText = sel.selectedOptions[0].text;
+        document.getElementById('refundConfirmBody').innerHTML =
+            '<p style="font-size:13px;margin-bottom:8px;">You are about to refund:</p>' +
+            '<div style="background:#f9fafb;border-radius:8px;padding:12px;font-size:13px;">' +
+            '<div><strong>Product:</strong> ' + escapeHtml(optText.split('(')[0].trim()) + '</div>' +
+            '<div><strong>Qty Returned:</strong> ' + qty + '</div>' +
+            '<div><strong>Refund Amount:</strong> ' + fmt(amount) + '</div>' +
+            (reason?'<div><strong>Reason:</strong> '+escapeHtml(reason)+'</div>':'') + '</div>' +
+            '<p style="font-size:12px;color:#6b7280;margin-top:10px;">Stock will be restored automatically.</p>';
+        document.getElementById('refundConfirmOverlay').style.display = 'flex';
+        document.getElementById('refundConfirmBtn').onclick = async function() {
+            closeRefundConfirm();
+            try {
+                var res = await fetch('/api/bills/' + currentBill.bill_id + '/refund', {
+                    method: 'POST', headers: {'Content-Type':'application/json'},
+                    body: JSON.stringify({ product_id:parseInt(productId), quantity_returned:qty, refund_amount:amount, refund_date:date, reason:reason })
+                });
+                var result = await res.json();
+                if (!res.ok) throw new Error(result.error||'Failed');
+                showToast('Refund processed. Stock restored.','success');
+                currentBill = await fetch('/api/bills/' + currentBill.bill_id).then(r=>r.json());
+                switchTab('refund-history'); loadBills();
+            } catch(e) { showToast(e.message,'error'); }
+        };
+    }
+
+    function closeRefundConfirm() { document.getElementById('refundConfirmOverlay').style.display = 'none'; }
+
+    async function renderRefundHistoryTab(body) {
+        if (!currentBill) return;
+        body.innerHTML = '<p style="color:#6b7280;font-size:13px;">Loading refunds...</p>';
+        try {
+            var refunds = await fetch('/api/bills/' + currentBill.bill_id + '/refunds').then(r=>r.json());
+            if (!refunds.length) { body.innerHTML = '<p class="empty-msg">No refunds for this bill.</p>'; return; }
+            var rows = refunds.map(function(r){
+                return '<div class="refund-row">' +
+                    '<div style="flex:1;"><div style="font-size:13px;font-weight:500;">' + escapeHtml(r.product_name) + '</div>' +
+                    '<div style="font-size:11px;color:#6b7280;">Returned: ' + r.quantity_returned + ' units — ' + fmtDate(r.refund_date) + '</div>' +
+                    (r.reason?'<div style="font-size:11px;color:#6b7280;">Reason: '+escapeHtml(r.reason)+'</div>':'') + '</div>' +
+                    '<div style="font-size:14px;font-weight:700;color:#dc2626;">-' + fmt(r.refund_amount) + '</div></div>';
+            }).join('');
+            var total = refunds.reduce(function(s,r){ return s+parseFloat(r.refund_amount); },0);
+            body.innerHTML = '<div style="margin-bottom:12px;">' + rows + '</div>' +
+                '<div style="text-align:right;font-size:14px;font-weight:700;color:#dc2626;padding-top:10px;border-top:2px solid #e5e7eb;">Total Refunded: ' + fmt(total) + '</div>';
+        } catch(e) { body.innerHTML = '<p style="color:#dc2626;text-align:center;">Failed to load refunds.</p>'; }
+    }
+
+    function printDetail() { switchTab('items'); setTimeout(function(){ window.print(); }, 150); }
+
+    async function deleteBill(billId, billNumber) {
+        if (!confirm('Delete ' + billNumber + '? Stock will be restored.')) return;
+        try {
+            var res = await fetch('/api/bills/' + billId, { method: 'DELETE' });
+            if (!res.ok) throw new Error('Failed');
+            showToast(billNumber + ' deleted', 'success'); loadBills();
+        } catch(e) { showToast('Failed to delete bill', 'error'); }
+    }
+
+    document.addEventListener('DOMContentLoaded', function(){
+        loadBills();
+        document.getElementById('searchBill').addEventListener('keyup', function(e){ if (e.key==='Enter') applyFilters(); });
+    });
+</script>
+{% endblock %}

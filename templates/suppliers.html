@@ -1,0 +1,166 @@
+{% extends "base.html" %}
+
+{% block title %}Suppliers - Inventory System{% endblock %}
+{% block page_title %}Suppliers Management{% endblock %}
+
+{% block content %}
+<div class="section-header">
+    <button class="btn-primary" onclick="showAddSupplierModal()">+ Add Supplier</button>
+</div>
+
+<div id="suppliersContent">
+    <div style="text-align: center; padding: 40px;">Loading suppliers...</div>
+</div>
+
+<script>
+    async function loadSuppliers() {
+        try {
+            const response = await fetch('/api/suppliers');
+            const suppliers = await response.json();
+            renderSuppliersTable(suppliers);
+        } catch (error) {
+            console.error('Error:', error);
+            document.getElementById('suppliersContent').innerHTML = '<div style="text-align: center; padding: 40px; color: #dc3545;">Failed to load suppliers</div>';
+            showToast('Failed to load suppliers', 'error');
+        }
+    }
+    
+    function renderSuppliersTable(suppliers) {
+        if (suppliers.length === 0) {
+            document.getElementById('suppliersContent').innerHTML = '<div style="text-align: center; padding: 40px; background: white; border-radius: 12px;">No suppliers found.</div>';
+            return;
+        }
+        
+        const html = `
+            <div class="table-container">
+                <table>
+                    <thead>
+                        <tr><th>ID</th><th>Name</th><th>Contact Person</th><th>Phone</th><th>Email</th><th>Address</th><th>Actions</th></tr>
+                    </thead>
+                    <tbody>
+                        ${suppliers.map(supplier => `
+                            <tr>
+                                <td>${supplier.supplier_id}</td>
+                                <td>${escapeHtml(supplier.name)}</td>
+                                <td>${escapeHtml(supplier.contact_person || '-')}</td>
+                                <td>${escapeHtml(supplier.phone || '-')}</td>
+                                <td>${escapeHtml(supplier.email || '-')}</td>
+                                <td>${escapeHtml(supplier.address || '-')}</td>
+                                <td>
+                                    <button class="btn-small" onclick="showEditSupplierModal(${supplier.supplier_id})">✏️ Edit</button>
+                                    <button class="btn-small btn-danger" onclick="deleteSupplier(${supplier.supplier_id})">🗑️ Delete</button>
+                                </td>
+                            </tr>
+                        `).join('')}
+                    </tbody>
+                </table>
+            </div>
+        `;
+        document.getElementById('suppliersContent').innerHTML = html;
+    }
+    
+    function showAddSupplierModal() {
+        const formHTML = `
+            <form id="supplierForm">
+                <div class="form-group"><label>Name *</label><input type="text" id="name" required></div>
+                <div class="form-group"><label>Contact Person</label><input type="text" id="contact_person"></div>
+                <div class="form-group"><label>Phone</label><input type="text" id="phone"></div>
+                <div class="form-group"><label>Email</label><input type="email" id="email"></div>
+                <div class="form-group"><label>Address</label><textarea id="address" rows="2"></textarea></div>
+            </form>
+        `;
+        
+        openModal('Add Supplier', formHTML, async () => {
+            const data = {
+                name: document.getElementById('name').value,
+                contact_person: document.getElementById('contact_person').value,
+                phone: document.getElementById('phone').value,
+                email: document.getElementById('email').value,
+                address: document.getElementById('address').value
+            };
+            
+            if (!data.name) {
+                showToast('Supplier name is required', 'error');
+                return;
+            }
+            
+            try {
+                const response = await fetch('/api/suppliers', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(data)
+                });
+                if (response.ok) {
+                    showToast('Supplier added successfully', 'success');
+                    closeModal();
+                    loadSuppliers();
+                } else {
+                    throw new Error('Failed to add supplier');
+                }
+            } catch (error) {
+                showToast('Failed to add supplier', 'error');
+            }
+        });
+    }
+    
+    async function showEditSupplierModal(id) {
+        const suppliers = await fetch('/api/suppliers').then(r => r.json());
+        const supplier = suppliers.find(s => s.supplier_id === id);
+        
+        const formHTML = `
+            <form id="supplierForm">
+                <div class="form-group"><label>Name *</label><input type="text" id="name" value="${escapeHtml(supplier.name)}" required></div>
+                <div class="form-group"><label>Contact Person</label><input type="text" id="contact_person" value="${escapeHtml(supplier.contact_person || '')}"></div>
+                <div class="form-group"><label>Phone</label><input type="text" id="phone" value="${escapeHtml(supplier.phone || '')}"></div>
+                <div class="form-group"><label>Email</label><input type="email" id="email" value="${escapeHtml(supplier.email || '')}"></div>
+                <div class="form-group"><label>Address</label><textarea id="address" rows="2">${escapeHtml(supplier.address || '')}</textarea></div>
+            </form>
+        `;
+        
+        openModal('Edit Supplier', formHTML, async () => {
+            const data = {
+                name: document.getElementById('name').value,
+                contact_person: document.getElementById('contact_person').value,
+                phone: document.getElementById('phone').value,
+                email: document.getElementById('email').value,
+                address: document.getElementById('address').value
+            };
+            
+            try {
+                const response = await fetch(`/api/suppliers/${id}`, {
+                    method: 'PUT',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(data)
+                });
+                if (response.ok) {
+                    showToast('Supplier updated successfully', 'success');
+                    closeModal();
+                    loadSuppliers();
+                } else {
+                    throw new Error('Failed to update supplier');
+                }
+            } catch (error) {
+                showToast('Failed to update supplier', 'error');
+            }
+        });
+    }
+    
+    async function deleteSupplier(id) {
+        if (!confirm('Are you sure you want to delete this supplier?')) return;
+        
+        try {
+            const response = await fetch(`/api/suppliers/${id}`, { method: 'DELETE' });
+            if (response.ok) {
+                showToast('Supplier deleted successfully', 'success');
+                loadSuppliers();
+            } else {
+                throw new Error('Failed to delete supplier');
+            }
+        } catch (error) {
+            showToast('Failed to delete supplier', 'error');
+        }
+    }
+    
+    loadSuppliers();
+</script>
+{% endblock %}

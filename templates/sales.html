@@ -1,0 +1,395 @@
+{% extends "base.html" %}
+{% block title %}Sales - IMS{% endblock %}
+{% block page_title %}Sales Management{% endblock %}
+
+{% block content %}
+
+<!-- Tab Navigation -->
+<div style="display:flex; gap:0; margin-bottom:20px; border-bottom:2px solid #e5e7eb;">
+    <button class="sales-tab active" data-tab="records"
+            onclick="switchSalesTab('records')">💰 Sales Records</button>
+    <button class="sales-tab" data-tab="summary"
+            onclick="switchSalesTab('summary')">📈 Daily Summary</button>
+</div>
+
+<!-- TAB: Sales Records -->
+<div id="tab-records">
+    <div class="sales-summary-bar" id="salesSummary"></div>
+    <div class="section-header">
+        <div style="display:flex; gap:10px; align-items:center; flex:1;">
+            <select id="filterType" onchange="applyFilter()"
+                    style="padding:8px 12px; border:1px solid #e5e7eb;
+                           border-radius:8px; font-size:0.9rem;">
+                <option value="all">All Sales</option>
+                <option value="manual">Manual Only</option>
+                <option value="billed">Billed Only</option>
+            </select>
+            <input type="text" id="filterBill" placeholder="Search bill no..."
+                   oninput="applyFilter()"
+                   style="padding:8px 12px; border:1px solid #e5e7eb;
+                          border-radius:8px; font-size:0.9rem; width:200px;">
+        </div>
+        <button class="btn-primary" onclick="showAddSaleModal()">+ Record Sale</button>
+    </div>
+    <div id="salesContent">
+        <div class="loading-msg">Loading sales...</div>
+    </div>
+</div>
+
+<!-- TAB: Daily Summary -->
+<div id="tab-summary" style="display:none;">
+    <div id="summaryContent">
+        <div class="loading-msg">Loading summary...</div>
+    </div>
+</div>
+
+<!-- Refund Modal -->
+<div id="refundOverlay" style="display:none; position:fixed; inset:0;
+     background:rgba(0,0,0,0.5); z-index:2000; align-items:center; justify-content:center;">
+    <div style="background:#fff; border-radius:12px; width:480px; max-width:95%;
+                max-height:90vh; overflow-y:auto; padding:24px;">
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:16px;">
+            <h3 style="font-size:15px; font-weight:600; margin:0;">↩️ Process Refund</h3>
+            <button onclick="closeRefundModal()"
+                    style="background:none;border:none;font-size:20px;cursor:pointer;color:#6b7280;">&times;</button>
+        </div>
+        <div id="refundModalBody"></div>
+    </div>
+</div>
+
+<style>
+    .sales-tab {
+        padding: 10px 20px;
+        border: none;
+        background: none;
+        font-size: 14px;
+        cursor: pointer;
+        color: #6b7280;
+        border-bottom: 2px solid transparent;
+        margin-bottom: -2px;
+        transition: all 0.15s;
+        font-weight: 500;
+    }
+    .sales-tab:hover  { color: #111827; }
+    .sales-tab.active { color: #1e293b; border-bottom-color: #1e293b; font-weight: 600; }
+</style>
+
+<script>
+    var allSales = [];
+
+    /* ── Tab Switch ──────────────────────────── */
+    function switchSalesTab(tab) {
+        document.querySelectorAll('.sales-tab').forEach(function(btn) {
+            btn.classList.toggle('active', btn.getAttribute('data-tab') === tab);
+        });
+        document.getElementById('tab-records').style.display = tab === 'records' ? 'block' : 'none';
+        document.getElementById('tab-summary').style.display = tab === 'summary' ? 'block' : 'none';
+        if (tab === 'summary') loadDailySummary();
+    }
+
+    /* ── Load Sales ──────────────────────────── */
+    async function loadSales() {
+        try {
+            const [sales, summary] = await Promise.all([
+                fetch('/api/sales').then(r => r.json()),
+                fetch('/api/sales/summary').then(r => r.json())
+            ]);
+            allSales = sales;
+            document.getElementById('salesSummary').innerHTML =
+                '<div class="stat-card-mini"><span>💰 Total Revenue:</span>' +
+                '<strong>₨' + parseFloat(summary.total_revenue || 0)
+                    .toLocaleString('en-PK', {minimumFractionDigits:2}) + '</strong></div>' +
+                '<div class="stat-card-mini"><span>📊 Total Sales:</span>' +
+                '<strong>' + (summary.total_sales || 0) + '</strong></div>';
+            applyFilter();
+        } catch(e) {
+            document.getElementById('salesContent').innerHTML =
+                '<p style="color:#dc2626;text-align:center;padding:40px;">Failed to load sales.</p>';
+        }
+    }
+
+    /* ── Filter ──────────────────────────────── */
+    function applyFilter() {
+        var type  = document.getElementById('filterType').value;
+        var billQ = document.getElementById('filterBill').value.trim().toUpperCase();
+        var filtered = allSales.filter(function(s) {
+            var notes   = (s.notes || '').toUpperCase();
+            var isBilled = notes.startsWith('AUTO-RECORDED FROM BILL-');
+            if (type === 'manual' && isBilled)  return false;
+            if (type === 'billed' && !isBilled) return false;
+            if (billQ && !notes.includes(billQ)) return false;
+            return true;
+        });
+        renderSalesTable(filtered);
+    }
+
+    /* ── Render Sales Table ──────────────────── */
+    function renderSalesTable(sales) {
+        if (!sales.length) {
+            document.getElementById('salesContent').innerHTML =
+                '<div class="empty-msg">No sales found.</div>';
+            return;
+        }
+        var rows = sales.map(function(sale) {
+            var notes    = sale.notes || '';
+            var isBilled = notes.toUpperCase().startsWith('AUTO-RECORDED FROM BILL-');
+            var billNum  = isBilled ? notes.replace(/auto-recorded from /i, '').trim() : '';
+
+            var notesCell = isBilled
+                ? '<button class="btn-small" style="background:#eff6ff;color:#1d4ed8;border:1px solid #bfdbfe;" ' +
+                  'onclick="viewBillFromSales(\'' + billNum + '\')">🧾 ' + billNum + '</button>'
+                : '<span style="color:#6b7280;font-size:0.85rem;">' + escapeHtml(notes || '—') + '</span>';
+
+            var actionsCell = isBilled
+                ? '<span style="font-size:0.8rem;color:#9ca3af;">via Billing</span>' +
+                  ' <button class="btn-small" style="background:#fef3c7;color:#92400e;border:1px solid #fbbf24;" ' +
+                  'onclick="showRefundFromSale(\'' + billNum + '\',' + sale.product_id + ')">↩️ Refund</button>'
+                : '<button class="btn-small" onclick="showEditSaleModal(' + sale.sale_id + ')">✏️ Edit</button>' +
+                  '<button class="btn-small btn-danger" onclick="deleteSale(' + sale.sale_id + ')">🗑️</button>';
+
+            return '<tr>' +
+                '<td>' + sale.sale_id + '</td>' +
+                '<td>' + escapeHtml(sale.product_name) + '</td>' +
+                '<td>' + sale.quantity_sold + '</td>' +
+                '<td>₨' + parseFloat(sale.sale_price).toFixed(2) + '</td>' +
+                '<td>₨' + parseFloat(sale.total_amount).toFixed(2) + '</td>' +
+                '<td>' + new Date(sale.sale_date + 'T00:00:00').toLocaleDateString() + '</td>' +
+                '<td>' + notesCell + '</td>' +
+                '<td>' + actionsCell + '</td>' +
+                '</tr>';
+        }).join('');
+
+        document.getElementById('salesContent').innerHTML =
+            '<div class="table-container"><table>' +
+            '<thead><tr><th>ID</th><th>Product</th><th>Qty</th><th>Price</th>' +
+            '<th>Total</th><th>Date</th><th>Bill / Notes</th><th>Actions</th></tr></thead>' +
+            '<tbody>' + rows + '</tbody></table></div>';
+    }
+
+    /* ── View Bill from Sales ────────────────── */
+    async function viewBillFromSale(billNumber) {
+        window.location.href = '/bill-history';
+    }
+
+    /* ── Refund from Sales Row ───────────────── */
+    async function showRefundFromSale(billNumber, productId) {
+        try {
+            var bills = await fetch('/api/bills').then(r => r.json());
+            var bill  = bills.find(function(b) { return b.bill_number === billNumber; });
+            if (!bill) { showToast('Bill not found', 'error'); return; }
+            var detail = await fetch('/api/bills/' + bill.bill_id).then(r => r.json());
+            var item   = detail.items.find(function(i) { return i.product_id === productId; });
+            if (!item) { showToast('Product not found in bill', 'error'); return; }
+
+            var today = new Date().toISOString().split('T')[0];
+            document.getElementById('refundModalBody').innerHTML =
+                '<div style="background:#fef3c7;border:1px solid #fbbf24;border-radius:8px;' +
+                'padding:10px;font-size:12px;color:#92400e;margin-bottom:14px;">' +
+                '⚠️ Refund from <strong>' + billNumber + '</strong>. Stock will be restored.' +
+                '</div>' +
+                '<div class="form-group"><label>Product</label>' +
+                '<input type="text" value="' + escapeHtml(item.product_name) + '" disabled ' +
+                'style="background:#f9fafb;"></div>' +
+                '<div class="form-group"><label>Max Qty (sold: ' + item.quantity + ')</label>' +
+                '<input type="number" id="r_qty" value="1" min="1" max="' + item.quantity + '" ' +
+                'oninput="document.getElementById(\'r_amount\').value=' +
+                '(this.value * ' + item.unit_price + ').toFixed(2)"></div>' +
+                '<div class="form-group"><label>Refund Amount (₨)</label>' +
+                '<input type="number" id="r_amount" value="' + item.unit_price.toFixed(2) + '" step="0.01"></div>' +
+                '<div class="form-group"><label>Refund Date</label>' +
+                '<input type="date" id="r_date" value="' + today + '"></div>' +
+                '<div class="form-group"><label>Reason</label>' +
+                '<textarea id="r_reason" rows="2" placeholder="e.g. Defective product"></textarea></div>' +
+                '<button onclick="processRefundFromSales(' + bill.bill_id + ',' + productId + ')" ' +
+                'style="width:100%;padding:10px;background:#dc2626;color:#fff;border:none;' +
+                'border-radius:8px;font-size:13px;font-weight:600;cursor:pointer;">' +
+                '↩️ Confirm Refund</button>';
+
+            document.getElementById('refundOverlay').style.display = 'flex';
+        } catch(e) {
+            showToast('Failed to load bill details', 'error');
+        }
+    }
+
+    async function processRefundFromSales(billId, productId) {
+        var qty    = parseInt(document.getElementById('r_qty').value);
+        var amount = parseFloat(document.getElementById('r_amount').value);
+        var date   = document.getElementById('r_date').value;
+        var reason = document.getElementById('r_reason').value;
+        if (!qty || !amount || !date) { showToast('Fill all fields', 'error'); return; }
+        try {
+            var res = await fetch('/api/bills/' + billId + '/refund', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    product_id: productId, quantity_returned: qty,
+                    refund_amount: amount, refund_date: date, reason: reason
+                })
+            });
+            var result = await res.json();
+            if (!res.ok) throw new Error(result.error || 'Failed');
+            showToast('Refund processed. Stock restored.', 'success');
+            closeRefundModal();
+            loadSales();
+        } catch(e) { showToast(e.message, 'error'); }
+    }
+
+    function closeRefundModal() {
+        document.getElementById('refundOverlay').style.display = 'none';
+    }
+
+    /* ── Daily Summary (embedded) ────────────── */
+    async function loadDailySummary() {
+    document.getElementById('summaryContent').innerHTML =
+        '<div class="loading-msg">Loading summary...</div>';
+    try {
+        var rows = await fetch('/api/sales/daily-summary').then(r => r.json());
+        if (!rows.length) {
+            document.getElementById('summaryContent').innerHTML =
+                '<p class="empty-msg">No sales data in the last 30 days.</p>';
+            return;
+        }
+        var totalRev   = rows.reduce(function(s,r){ return s + parseFloat(r.total_revenue||0); }, 0);
+        var totalBills = rows.reduce(function(s,r){ return s + parseInt(r.total_bills||0); }, 0);
+        var totalGst   = rows.reduce(function(s,r){ return s + parseFloat(r.total_gst||0); }, 0);
+
+        var tableRows = rows.map(function(r){
+            return '<tr>' +
+                '<td><strong>' + fmtDate(r.bill_date) + '</strong></td>' +
+                '<td>' + r.total_bills + '</td>' +
+                '<td>₨' + parseFloat(r.net_revenue).toLocaleString('en-PK',{minimumFractionDigits:2}) + '</td>' +
+                '<td style="color:#059669;">+₨' + parseFloat(r.total_gst).toLocaleString('en-PK',{minimumFractionDigits:2}) + '</td>' +
+                '<td style="font-weight:700;">₨' + parseFloat(r.total_revenue).toLocaleString('en-PK',{minimumFractionDigits:2}) + '</td>' +
+                '</tr>';
+        }).join('');
+
+        document.getElementById('summaryContent').innerHTML =
+            '<div style="display:flex;gap:14px;flex-wrap:wrap;margin-bottom:16px;">' +
+            '<div style="background:#fff;padding:14px 18px;border-radius:10px;box-shadow:0 1px 3px rgba(0,0,0,0.08);flex:1;min-width:130px;">' +
+            '<div style="font-size:12px;color:#6b7280;margin-bottom:4px;">💰 Total Revenue (30d)</div>' +
+            '<div style="font-size:18px;font-weight:700;">₨' + totalRev.toLocaleString('en-PK',{minimumFractionDigits:2}) + '</div></div>' +
+            '<div style="background:#fff;padding:14px 18px;border-radius:10px;box-shadow:0 1px 3px rgba(0,0,0,0.08);flex:1;min-width:130px;">' +
+            '<div style="font-size:12px;color:#6b7280;margin-bottom:4px;">🧾 Total Bills (30d)</div>' +
+            '<div style="font-size:18px;font-weight:700;">' + totalBills + '</div></div>' +
+            '<div style="background:#f0fdf4;padding:14px 18px;border-radius:10px;box-shadow:0 1px 3px rgba(0,0,0,0.08);flex:1;min-width:130px;">' +
+            '<div style="font-size:12px;color:#6b7280;margin-bottom:4px;">📊 Total GST (30d)</div>' +
+            '<div style="font-size:18px;font-weight:700;">₨' + totalGst.toLocaleString('en-PK',{minimumFractionDigits:2}) + '</div></div>' +
+            '</div>' +
+            '<div class="table-container"><table>' +
+            '<thead><tr><th>Date</th><th>Bills</th><th>Net Revenue</th><th>GST</th><th>Total (incl. GST)</th></tr></thead>' +
+            '<tbody>' + tableRows + '</tbody></table></div>';
+
+    } catch(e) {
+        console.error(e);
+        document.getElementById('summaryContent').innerHTML =
+            '<p style="color:#dc2626;text-align:center;padding:40px;">Failed to load summary.</p>';
+    }
+}
+
+    /* ── Add Sale Modal ──────────────────────── */
+    async function showAddSaleModal() {
+        const products = await fetch('/api/products').then(r => r.json());
+        const today    = new Date().toISOString().split('T')[0];
+        const formHTML =
+            '<div class="form-group"><label>Product *</label>' +
+            '<select id="product_id" required><option value="">Select product...</option>' +
+            products.map(function(p) {
+                return '<option value="' + p.product_id + '" data-price="' + p.price + '">' +
+                       escapeHtml(p.name) + ' — Stock: ' + p.stock_quantity +
+                       ' — ₨' + parseFloat(p.price).toFixed(2) + '</option>';
+            }).join('') + '</select></div>' +
+            '<div class="form-group"><label>Quantity *</label>' +
+            '<input type="number" id="quantity" min="1" required></div>' +
+            '<div class="form-group"><label>Sale Price *</label>' +
+            '<input type="number" step="0.01" id="sale_price" required></div>' +
+            '<div class="form-group"><label>Sale Date *</label>' +
+            '<input type="date" id="sale_date" value="' + today + '" required></div>' +
+            '<div class="form-group"><label>Notes</label>' +
+            '<textarea id="notes" rows="2"></textarea></div>';
+
+        openModal('Record Sale', formHTML, async function() {
+            var pid   = document.getElementById('product_id').value;
+            var qty   = parseInt(document.getElementById('quantity').value);
+            var price = parseFloat(document.getElementById('sale_price').value);
+            if (!pid || !qty || !price) { showToast('Fill required fields', 'error'); return; }
+            try {
+                var res = await fetch('/api/sales', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        product_id: parseInt(pid), quantity_sold: qty,
+                        sale_price: price,
+                        sale_date: document.getElementById('sale_date').value,
+                        notes: document.getElementById('notes').value
+                    })
+                });
+                if (res.ok) { showToast('Sale recorded', 'success'); closeModal(); loadSales(); }
+                else { var e = await res.json(); throw new Error(e.error || 'Failed'); }
+            } catch(e) { showToast(e.message, 'error'); }
+        });
+
+        document.getElementById('product_id').onchange = function() {
+            var opt = this.selectedOptions[0];
+            if (opt && opt.value) {
+                document.getElementById('sale_price').value =
+                    parseFloat(opt.getAttribute('data-price')).toFixed(2);
+                document.getElementById('quantity').value = 1;
+            }
+        };
+    }
+
+    /* ── Edit Sale Modal ─────────────────────── */
+    async function showEditSaleModal(id) {
+        const [allS, products] = await Promise.all([
+            fetch('/api/sales').then(r => r.json()),
+            fetch('/api/products').then(r => r.json())
+        ]);
+        var sale = allS.find(function(s) { return s.sale_id === id; });
+        var formHTML =
+            '<div class="form-group"><label>Product *</label><select id="product_id" required>' +
+            products.map(function(p) {
+                return '<option value="' + p.product_id + '"' +
+                       (sale.product_id == p.product_id ? ' selected' : '') + '>' +
+                       escapeHtml(p.name) + '</option>';
+            }).join('') + '</select></div>' +
+            '<div class="form-group"><label>Quantity *</label>' +
+            '<input type="number" id="quantity" value="' + sale.quantity_sold + '" required></div>' +
+            '<div class="form-group"><label>Sale Price *</label>' +
+            '<input type="number" step="0.01" id="sale_price" value="' + sale.sale_price + '" required></div>' +
+            '<div class="form-group"><label>Sale Date *</label>' +
+            '<input type="date" id="sale_date" value="' + sale.sale_date + '" required></div>' +
+            '<div class="form-group"><label>Notes</label>' +
+            '<textarea id="notes" rows="2">' + escapeHtml(sale.notes || '') + '</textarea></div>';
+
+        openModal('Edit Sale', formHTML, async function() {
+            try {
+                var res = await fetch('/api/sales/' + id, {
+                    method: 'PUT',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        product_id:    parseInt(document.getElementById('product_id').value),
+                        quantity_sold: parseInt(document.getElementById('quantity').value),
+                        sale_price:    parseFloat(document.getElementById('sale_price').value),
+                        sale_date:     document.getElementById('sale_date').value,
+                        notes:         document.getElementById('notes').value
+                    })
+                });
+                if (res.ok) { showToast('Sale updated', 'success'); closeModal(); loadSales(); }
+                else throw new Error('Failed');
+            } catch(e) { showToast(e.message, 'error'); }
+        });
+    }
+
+    /* ── Delete Sale ─────────────────────────── */
+    async function deleteSale(id) {
+        if (!confirm('Delete this sale record?')) return;
+        try {
+            var res = await fetch('/api/sales/' + id, { method: 'DELETE' });
+            if (res.ok) { showToast('Sale deleted', 'success'); loadSales(); }
+            else throw new Error('Failed');
+        } catch(e) { showToast(e.message, 'error'); }
+    }
+
+    loadSales();
+</script>
+{% endblock %}

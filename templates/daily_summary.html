@@ -1,0 +1,206 @@
+{% extends "base.html" %}
+{% block title %}Daily Summary - IMS{% endblock %}
+{% block page_title %}Daily Sales Summary{% endblock %}
+
+{% block content %}
+<div id="topCards" style="display:flex;gap:14px;flex-wrap:wrap;margin-bottom:20px;"></div>
+
+<div style="background:#fff;border-radius:10px;padding:12px 16px;box-shadow:0 1px 3px rgba(0,0,0,0.08);
+            margin-bottom:16px;display:flex;gap:10px;flex-wrap:wrap;align-items:center;">
+    <label style="font-size:13px;color:#6b7280;">Date Range:</label>
+    <input type="date" id="dsFrom" style="padding:7px 10px;border:1px solid #e5e7eb;border-radius:8px;font-size:13px;">
+    <span style="color:#6b7280;font-size:13px;">to</span>
+    <input type="date" id="dsTo"   style="padding:7px 10px;border:1px solid #e5e7eb;border-radius:8px;font-size:13px;">
+    <button onclick="applyDateFilter()"
+            style="padding:8px 16px;background:#1e293b;color:#fff;border:none;border-radius:8px;font-size:13px;cursor:pointer;">Apply</button>
+    <button onclick="resetDateFilter()"
+            style="padding:8px 16px;background:#f9fafb;color:#374151;border:1px solid #e5e7eb;border-radius:8px;font-size:13px;cursor:pointer;">Last 30 Days</button>
+</div>
+
+<div style="background:#fff;border-radius:10px;padding:20px;box-shadow:0 1px 3px rgba(0,0,0,0.08);margin-bottom:16px;">
+    <h3 style="font-size:14px;font-weight:600;margin-bottom:16px;color:#111827;">📊 Daily Revenue (Last 30 Days)</h3>
+    <div id="chartArea" style="overflow-x:auto;"><div class="loading-msg">Loading chart...</div></div>
+</div>
+
+<div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:16px;">
+    <div style="background:#fff;border-radius:10px;padding:20px;box-shadow:0 1px 3px rgba(0,0,0,0.08);">
+        <h3 style="font-size:14px;font-weight:600;margin-bottom:14px;color:#111827;">🏆 Top Selling Products</h3>
+        <div id="topProductsArea"><div class="loading-msg">Loading...</div></div>
+    </div>
+    <div style="background:#fff;border-radius:10px;padding:20px;box-shadow:0 1px 3px rgba(0,0,0,0.08);">
+        <h3 style="font-size:14px;font-weight:600;margin-bottom:14px;color:#111827;">💳 Payment Method Breakdown</h3>
+        <div id="paymentBreakdownArea"><div class="loading-msg">Loading...</div></div>
+    </div>
+</div>
+
+<div class="table-container">
+    <h3 style="font-size:14px;font-weight:600;margin-bottom:14px;">📅 Daily Breakdown</h3>
+    <div id="dailyTableArea"><div class="loading-msg">Loading table...</div></div>
+</div>
+
+<script>
+    var allRows = [];
+
+    function fmt(n) { return '₨' + parseFloat(n||0).toLocaleString('en-PK',{minimumFractionDigits:2}); }
+
+    async function loadAll() {
+        try {
+            const [summary, bills, salesSummary] = await Promise.all([
+                fetch('/api/sales/daily-summary').then(r => r.json()),
+                fetch('/api/bills').then(r => r.json()),
+                fetch('/api/sales/summary').then(r => r.json())
+            ]);
+            allRows = summary;
+            renderTopCards(summary, salesSummary);
+            renderChart(summary);
+            renderDailyTable(summary);
+            renderTopProducts();
+            renderPaymentBreakdown(bills);
+        } catch(e) { console.error(e); }
+    }
+
+    function renderTopCards(rows, salesSummary) {
+        /* FIX: use total_revenue from API (already includes GST) */
+        var totalRev   = rows.reduce(function(s,r){ return s+parseFloat(r.total_revenue||0); },0);
+        var totalBills = rows.reduce(function(s,r){ return s+parseInt(r.total_bills||0);     },0);
+        var totalGst   = rows.reduce(function(s,r){ return s+parseFloat(r.total_gst||0);     },0);
+        var avgDaily   = rows.length ? totalRev/rows.length : 0;
+        var bestDay    = rows.length ? rows.reduce(function(a,b){
+            return parseFloat(a.total_revenue)>parseFloat(b.total_revenue)?a:b;
+        }) : null;
+        document.getElementById('topCards').innerHTML =
+            topCard('💰 Total Revenue (30d)', fmt(totalRev),    '#fff') +
+            topCard('🧾 Total Bills (30d)',   totalBills,       '#fff') +
+            topCard('📊 Total GST (30d)',     fmt(totalGst),    '#f0fdf4') +
+            topCard('📈 Avg Daily Revenue',   fmt(avgDaily),    '#eff6ff') +
+            (bestDay ? topCard('🏆 Best Day', fmtDate(bestDay.bill_date)+'<br><small style="font-size:12px;">'+fmt(bestDay.total_revenue)+'</small>', '#fefce8') : '');
+    }
+
+    function topCard(label, val, bg) {
+        return '<div style="background:'+bg+';padding:14px 18px;border-radius:10px;box-shadow:0 1px 3px rgba(0,0,0,0.08);min-width:150px;flex:1;">' +
+               '<div style="font-size:12px;color:#6b7280;margin-bottom:6px;">'+label+'</div>' +
+               '<div style="font-size:17px;font-weight:700;color:#111827;">'+val+'</div></div>';
+    }
+
+    function renderChart(rows) {
+        if (!rows.length) { document.getElementById('chartArea').innerHTML='<p class="empty-msg">No data available.</p>'; return; }
+        var display  = rows.slice().reverse().slice(-30);
+        var maxVal   = Math.max.apply(null, display.map(function(r){ return parseFloat(r.total_revenue||0); }));
+        var barWidth = Math.max(24, Math.min(48, Math.floor(700/display.length)-4));
+        var chartW   = display.length*(barWidth+4)+60;
+        var chartH   = 200;
+        var bars = display.map(function(r, i){
+            var val   = parseFloat(r.total_revenue||0);
+            var barH  = maxVal>0 ? Math.round((val/maxVal)*160) : 0;
+            var x     = 40 + i*(barWidth+4);
+            var y     = chartH-30-barH;
+            var dateL = r.bill_date ? r.bill_date.slice(5) : '';
+            var color = barH>120?'#1e293b':barH>60?'#3b82f6':'#93c5fd';
+            return '<g><rect x="'+x+'" y="'+y+'" width="'+barWidth+'" height="'+barH+'" fill="'+color+'" rx="3" opacity="0.9">' +
+                   '<title>'+fmtDate(r.bill_date)+': '+fmt(val)+' ('+r.total_bills+' bills)</title></rect>' +
+                   '<text x="'+(x+barWidth/2)+'" y="'+(chartH-14)+'" text-anchor="middle" font-size="9" fill="#6b7280">'+dateL+'</text></g>';
+        }).join('');
+        var yLabels = '';
+        for (var i=0;i<=4;i++) {
+            var yVal = (maxVal*i/4);
+            var yPos = chartH-30-(160*i/4);
+            yLabels += '<text x="35" y="'+yPos+'" text-anchor="end" font-size="9" fill="#9ca3af">'+(yVal>=1000?(yVal/1000).toFixed(1)+'k':yVal.toFixed(0))+'</text>' +
+                       '<line x1="40" y1="'+yPos+'" x2="'+chartW+'" y2="'+yPos+'" stroke="#f3f4f6" stroke-width="1"/>';
+        }
+        document.getElementById('chartArea').innerHTML =
+            '<svg width="'+Math.max(chartW,500)+'" height="'+chartH+'" style="display:block;">'+yLabels+bars+'</svg>';
+    }
+
+    async function renderTopProducts() {
+        try {
+            var sales = await fetch('/api/sales').then(r=>r.json());
+            var map = {};
+            sales.forEach(function(s){
+                if (!map[s.product_name]) map[s.product_name]={qty:0,revenue:0};
+                map[s.product_name].qty     += parseInt(s.quantity_sold);
+                map[s.product_name].revenue += parseFloat(s.total_amount);
+            });
+            var sorted = Object.keys(map).map(function(name){
+                return {name:name,qty:map[name].qty,revenue:map[name].revenue};
+            }).sort(function(a,b){ return b.revenue-a.revenue; }).slice(0,10);
+            var maxRev = sorted.length ? sorted[0].revenue : 1;
+            var medals = ['🥇','🥈','🥉'];
+            var html = sorted.map(function(p,i){
+                var pct = Math.round((p.revenue/maxRev)*100);
+                return '<div style="margin-bottom:12px;">' +
+                    '<div style="display:flex;justify-content:space-between;font-size:13px;margin-bottom:4px;">' +
+                    '<span>'+(medals[i]||(i+1)+'.')+' '+escapeHtml(p.name)+'</span>' +
+                    '<span style="font-weight:600;">'+fmt(p.revenue)+'</span></div>' +
+                    '<div style="background:#e5e7eb;border-radius:4px;height:6px;">' +
+                    '<div style="background:#1e293b;width:'+pct+'%;height:100%;border-radius:4px;"></div></div>' +
+                    '<div style="font-size:11px;color:#6b7280;margin-top:2px;">'+p.qty+' units sold</div></div>';
+            }).join('');
+            document.getElementById('topProductsArea').innerHTML = html || '<p class="empty-msg">No data.</p>';
+        } catch(e) {
+            document.getElementById('topProductsArea').innerHTML = '<p style="color:#dc2626;">Failed to load.</p>';
+        }
+    }
+
+    function renderPaymentBreakdown(bills) {
+        var methods = {cash:0,card:0,online:0,credit:0};
+        var counts  = {cash:0,card:0,online:0,credit:0};
+        bills.forEach(function(b){
+            var m = b.payment_method||'cash';
+            if (methods[m]!==undefined) {
+                /* FIX: grand_total already includes GST — no manual addition */
+                methods[m] += parseFloat(b.grand_total||0);
+                counts[m]++;
+            }
+        });
+        var total  = Object.values(methods).reduce(function(s,v){ return s+v; },0);
+        var icons  = {cash:'💵',card:'💳',online:'📱',credit:'📋'};
+        var colors = {cash:'#22c55e',card:'#3b82f6',online:'#8b5cf6',credit:'#f59e0b'};
+        var html = Object.keys(methods).map(function(m){
+            var pct = total>0?Math.round((methods[m]/total)*100):0;
+            return '<div style="margin-bottom:14px;">' +
+                '<div style="display:flex;justify-content:space-between;font-size:13px;margin-bottom:4px;">' +
+                '<span>'+icons[m]+' '+m.charAt(0).toUpperCase()+m.slice(1)+
+                ' <span style="color:#6b7280;font-size:11px;">('+counts[m]+' bills)</span></span>' +
+                '<span style="font-weight:600;">'+fmt(methods[m])+' <span style="color:#6b7280;font-size:11px;">('+pct+'%)</span></span></div>' +
+                '<div style="background:#e5e7eb;border-radius:4px;height:8px;">' +
+                '<div style="background:'+colors[m]+';width:'+pct+'%;height:100%;border-radius:4px;"></div></div></div>';
+        }).join('');
+        document.getElementById('paymentBreakdownArea').innerHTML = html || '<p class="empty-msg">No data.</p>';
+    }
+
+    function renderDailyTable(rows) {
+        if (!rows.length) { document.getElementById('dailyTableArea').innerHTML='<p class="empty-msg">No data for the selected range.</p>'; return; }
+        var trows = rows.map(function(r){
+            return '<tr>' +
+                '<td><strong>'+fmtDate(r.bill_date)+'</strong></td>' +
+                '<td>'+r.total_bills+'</td>' +
+                '<td>'+fmt(r.net_revenue)+'</td>' +
+                '<td style="color:#059669;">+'+fmt(r.total_gst)+'</td>' +
+                '<td style="font-weight:700;">'+fmt(r.total_revenue)+'</td></tr>';
+        }).join('');
+        document.getElementById('dailyTableArea').innerHTML =
+            '<table><thead><tr><th>Date</th><th>Bills</th><th>Net Revenue</th><th>GST</th><th>Total (incl. GST)</th></tr></thead><tbody>'+trows+'</tbody></table>';
+    }
+
+    function applyDateFilter() {
+        var from = document.getElementById('dsFrom').value;
+        var to   = document.getElementById('dsTo').value;
+        var filtered = allRows.filter(function(r){
+            if (from && r.bill_date < from) return false;
+            if (to   && r.bill_date > to)   return false;
+            return true;
+        });
+        renderChart(filtered);
+        renderDailyTable(filtered);
+    }
+
+    function resetDateFilter() {
+        document.getElementById('dsFrom').value = '';
+        document.getElementById('dsTo').value   = '';
+        renderChart(allRows);
+        renderDailyTable(allRows);
+    }
+
+    document.addEventListener('DOMContentLoaded', loadAll);
+</script>
+{% endblock %}

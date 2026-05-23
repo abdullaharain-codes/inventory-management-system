@@ -1,0 +1,200 @@
+{% extends "base.html" %}
+
+{% block title %}Products - Inventory System{% endblock %}
+{% block page_title %}Products Management{% endblock %}
+
+{% block content %}
+<div class="section-header">
+    <input type="text" id="searchInput" placeholder="🔍 Search products..." class="search-input">
+    <button class="btn-primary" onclick="showAddProductModal()">+ Add Product</button>
+</div>
+
+<div id="productsContent">
+    <div style="text-align: center; padding: 40px;">Loading products...</div>
+</div>
+
+<script>
+    async function loadProducts() {
+        try {
+            const response = await fetch('/api/products');
+            const products = await response.json();
+            renderProductsTable(products);
+            
+            // Setup search
+            const searchInput = document.getElementById('searchInput');
+            searchInput.oninput = async (e) => {
+                const query = e.target.value;
+                if (query) {
+                    const searchRes = await fetch(`/api/products/search?q=${encodeURIComponent(query)}`);
+                    const results = await searchRes.json();
+                    renderProductsTable(results);
+                } else {
+                    renderProductsTable(products);
+                }
+            };
+        } catch (error) {
+            console.error('Error:', error);
+            document.getElementById('productsContent').innerHTML = '<div style="text-align: center; padding: 40px; color: #dc3545;">Failed to load products</div>';
+            showToast('Failed to load products', 'error');
+        }
+    }
+    
+    async function renderProductsTable(products) {
+        if (products.length === 0) {
+            document.getElementById('productsContent').innerHTML = '<div style="text-align: center; padding: 40px; background: white; border-radius: 12px;">No products found.</div>';
+            return;
+        }
+        
+        const suppliers = await fetch('/api/suppliers').then(r => r.json());
+        const supplierMap = {};
+        suppliers.forEach(s => supplierMap[s.supplier_id] = s.name);
+        
+        const html = `
+            <div class="table-container">
+                <table>
+                    <thead>
+                        <tr><th>ID</th><th>Name</th><th>Category</th><th>Price</th><th>Stock</th><th>Supplier</th><th>Actions</th></tr>
+                    </thead>
+                    <tbody>
+                        ${products.map(product => `
+                            <tr ${product.stock_quantity < 10 ? 'class="low-stock"' : ''}>
+                                <td>${product.product_id}</td>
+                                <td>${escapeHtml(product.name)}</td>
+                                <td>${escapeHtml(product.category || '-')}</td>
+                                <td>$${parseFloat(product.price).toFixed(2)}</td>
+                                <td><span class="${product.stock_quantity < 10 ? 'badge-danger' : 'badge-success'}">${product.stock_quantity}</span></td>
+                                <td>${escapeHtml(supplierMap[product.supplier_id] || '-')}</td>
+                                <td>
+                                    <button class="btn-small" onclick="showEditProductModal(${product.product_id})">✏️ Edit</button>
+                                    <button class="btn-small btn-danger" onclick="deleteProduct(${product.product_id})">🗑️ Delete</button>
+                                </td>
+                            </tr>
+                        `).join('')}
+                    </tbody>
+                </table>
+            </div>
+        `;
+        document.getElementById('productsContent').innerHTML = html;
+    }
+    
+    async function showAddProductModal() {
+        const suppliers = await fetch('/api/suppliers').then(r => r.json());
+        const formHTML = `
+            <form id="productForm">
+                <div class="form-group"><label>Name *</label><input type="text" id="name" required></div>
+                <div class="form-group"><label>Description</label><textarea id="description" rows="2"></textarea></div>
+                <div class="form-group"><label>Category</label><input type="text" id="category"></div>
+                <div class="form-group"><label>Price *</label><input type="number" step="0.01" id="price" required></div>
+                <div class="form-group"><label>Stock Quantity</label><input type="number" id="stock_quantity" value="0"></div>
+                <div class="form-group"><label>Supplier</label>
+                    <select id="supplier_id"><option value="">None</option>
+                        ${suppliers.map(s => `<option value="${s.supplier_id}">${escapeHtml(s.name)}</option>`).join('')}
+                    </select>
+                </div>
+            </form>
+        `;
+        
+        openModal('Add Product', formHTML, async () => {
+            const data = {
+                name: document.getElementById('name').value,
+                description: document.getElementById('description').value,
+                category: document.getElementById('category').value,
+                price: parseFloat(document.getElementById('price').value),
+                stock_quantity: parseInt(document.getElementById('stock_quantity').value),
+                supplier_id: document.getElementById('supplier_id').value || null
+            };
+            
+            if (!data.name || !data.price) {
+                showToast('Please fill required fields', 'error');
+                return;
+            }
+            
+            try {
+                const response = await fetch('/api/products', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(data)
+                });
+                if (response.ok) {
+                    showToast('Product added successfully', 'success');
+                    closeModal();
+                    loadProducts();
+                } else {
+                    throw new Error('Failed to add product');
+                }
+            } catch (error) {
+                showToast('Failed to add product', 'error');
+            }
+        });
+    }
+    
+    async function showEditProductModal(id) {
+        const [product, suppliers] = await Promise.all([
+            fetch(`/api/products/${id}`).then(r => r.json()),
+            fetch('/api/suppliers').then(r => r.json())
+        ]);
+        
+        const formHTML = `
+            <form id="productForm">
+                <div class="form-group"><label>Name *</label><input type="text" id="name" value="${escapeHtml(product.name)}" required></div>
+                <div class="form-group"><label>Description</label><textarea id="description" rows="2">${escapeHtml(product.description || '')}</textarea></div>
+                <div class="form-group"><label>Category</label><input type="text" id="category" value="${escapeHtml(product.category || '')}"></div>
+                <div class="form-group"><label>Price *</label><input type="number" step="0.01" id="price" value="${product.price}" required></div>
+                <div class="form-group"><label>Stock Quantity</label><input type="number" id="stock_quantity" value="${product.stock_quantity}"></div>
+                <div class="form-group"><label>Supplier</label>
+                    <select id="supplier_id">
+                        <option value="">None</option>
+                        ${suppliers.map(s => `<option value="${s.supplier_id}" ${product.supplier_id == s.supplier_id ? 'selected' : ''}>${escapeHtml(s.name)}</option>`).join('')}
+                    </select>
+                </div>
+            </form>
+        `;
+        
+        openModal('Edit Product', formHTML, async () => {
+            const data = {
+                name: document.getElementById('name').value,
+                description: document.getElementById('description').value,
+                category: document.getElementById('category').value,
+                price: parseFloat(document.getElementById('price').value),
+                stock_quantity: parseInt(document.getElementById('stock_quantity').value),
+                supplier_id: document.getElementById('supplier_id').value || null
+            };
+            
+            try {
+                const response = await fetch(`/api/products/${id}`, {
+                    method: 'PUT',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(data)
+                });
+                if (response.ok) {
+                    showToast('Product updated successfully', 'success');
+                    closeModal();
+                    loadProducts();
+                } else {
+                    throw new Error('Failed to update product');
+                }
+            } catch (error) {
+                showToast('Failed to update product', 'error');
+            }
+        });
+    }
+    
+    async function deleteProduct(id) {
+        if (!confirm('Are you sure you want to delete this product?')) return;
+        
+        try {
+            const response = await fetch(`/api/products/${id}`, { method: 'DELETE' });
+            if (response.ok) {
+                showToast('Product deleted successfully', 'success');
+                loadProducts();
+            } else {
+                throw new Error('Failed to delete product');
+            }
+        } catch (error) {
+            showToast('Failed to delete product', 'error');
+        }
+    }
+    
+    loadProducts();
+</script>
+{% endblock %}

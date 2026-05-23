@@ -1,0 +1,100 @@
+{% extends "base.html" %}
+{% block title %}Dashboard - IMS{% endblock %}
+{% block page_title %}Dashboard{% endblock %}
+
+{% block content %}
+<div id="dashboardContent">
+    <div class="loading-msg">Loading dashboard...</div>
+</div>
+
+<script>
+async function loadDashboard() {
+    try {
+        const [products, suppliers, summary, sales] = await Promise.all([
+            fetch('/api/products').then(r => r.json()),
+            fetch('/api/suppliers').then(r => r.json()),
+            fetch('/api/sales/summary').then(r => r.json()),
+            fetch('/api/sales').then(r => r.json())
+        ]);
+
+        const lowStock = products.filter(p => p.stock_quantity < 10).slice(0, 10);
+        const recentSales = sales.slice(0, 5);
+
+        document.getElementById('dashboardContent').innerHTML = `
+            <div class="stats-grid">
+                <div class="stat-card">
+                    <div class="stat-info">
+                        <div class="stat-label">Total Products</div>
+                        <div class="stat-value">${products.length}</div>
+                    </div>
+                    <div class="stat-icon">🗂️</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-info">
+                        <div class="stat-label">Total Suppliers</div>
+                        <div class="stat-value">${suppliers.length}</div>
+                    </div>
+                    <div class="stat-icon">🏭</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-info">
+                        <div class="stat-label">Total Sales</div>
+                        <div class="stat-value">${summary.total_sales || 0}</div>
+                    </div>
+                    <div class="stat-icon">💰</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-info">
+                        <div class="stat-label">Total Revenue</div>
+                        <div class="stat-value">$${parseFloat(summary.total_revenue || 0).toLocaleString(undefined, {minimumFractionDigits: 2})}</div>
+                    </div>
+                    <div class="stat-icon">💵</div>
+                </div>
+            </div>
+
+            <div class="table-container">
+                <h3>⚠️ Low Stock Alert (Stock &lt; 10)</h3>
+                ${lowStock.length > 0 ? `
+                <table>
+                    <thead><tr><th>ID</th><th>Product</th><th>Stock</th><th>Category</th></tr></thead>
+                    <tbody>
+                        ${lowStock.map(p => `
+                        <tr class="low-stock">
+                            <td>${p.product_id}</td>
+                            <td>${escapeHtml(p.name)}</td>
+                            <td><span class="badge-danger">${p.stock_quantity} units</span></td>
+                            <td>${escapeHtml(p.category || '-')}</td>
+                        </tr>`).join('')}
+                    </tbody>
+                </table>` : '<p class="empty-msg">✅ All products have sufficient stock.</p>'}
+            </div>
+
+            <div class="table-container" style="margin-top:24px;">
+                <h3>📋 Recent Sales</h3>
+                ${recentSales.length > 0 ? `
+                <table>
+                    <thead><tr><th>ID</th><th>Product</th><th>Qty</th><th>Price</th><th>Total</th><th>Date</th></tr></thead>
+                    <tbody>
+                        ${recentSales.map(s => `
+                        <tr>
+                            <td>${s.sale_id}</td>
+                            <td>${escapeHtml(s.product_name)}</td>
+                            <td>${s.quantity_sold}</td>
+                            <td>$${parseFloat(s.sale_price).toFixed(2)}</td>
+                            <td>$${parseFloat(s.total_amount).toFixed(2)}</td>
+                            <td>${new Date(s.sale_date).toLocaleDateString()}</td>
+                        </tr>`).join('')}
+                    </tbody>
+                </table>` : '<p class="empty-msg">No sales recorded yet.</p>'}
+            </div>
+        `;
+    } catch (err) {
+        console.error('Dashboard error:', err);
+        document.getElementById('dashboardContent').innerHTML =
+            '<p style="color:red;text-align:center;padding:40px">Failed to load dashboard.</p>';
+    }
+}
+
+loadDashboard();
+</script>
+{% endblock %}

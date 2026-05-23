@@ -5,8 +5,8 @@ import random
 DB_CONFIG = {
     'host':     'localhost',
     'user':     'root',
-    'password': 'StrongPassword123!',          # Add your password if any
-    'database': 'inventory_db'
+    'password': 'Add your password',          # Add your password if any
+    'database': 'Add your DB Name'
 }
 
 # ── Seed Data Pools ───────────────────────────────────────────────

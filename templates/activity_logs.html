@@ -1,0 +1,139 @@
+{% extends "base.html" %}
+
+{% block title %}Activity Logs - Inventory System{% endblock %}
+{% block page_title %}Activity Logs{% endblock %}
+
+{% block content %}
+<div class="section-header">
+    <div class="filter-bar">
+        <input type="date" id="filterDateFrom" placeholder="From date">
+        <input type="date" id="filterDateTo" placeholder="To date">
+        <select id="filterModule">
+            <option value="">All Modules</option>
+            <option value="users">Users</option>
+            <option value="products">Products</option>
+            <option value="sales">Sales</option>
+            <option value="billing">Billing</option>
+            <option value="auth">Auth</option>
+        </select>
+        <select id="filterUser">
+            <option value="">All Users</option>
+        </select>
+        <button class="btn-primary" onclick="loadLogs()">🔍 Filter</button>
+    </div>
+</div>
+
+<div id="logsContent">
+    <div style="text-align: center; padding: 40px;">Loading activity logs...</div>
+</div>
+
+<div id="pagination" style="display:none; text-align: center; margin-top: 20px;"></div>
+
+<script>
+    var userRole = 'admin';
+    var currentPage = 1;
+
+    async function loadLogs() {
+        currentPage = 1;
+        await fetchLogs();
+    }
+
+    async function fetchLogs() {
+        var dateFrom = document.getElementById('filterDateFrom').value;
+        var dateTo   = document.getElementById('filterDateTo').value;
+        var module   = document.getElementById('filterModule').value;
+        var userId   = document.getElementById('filterUser').value;
+
+        var params = new URLSearchParams();
+        params.set('page', currentPage);
+        if (dateFrom) params.set('date_from', dateFrom);
+        if (dateTo)   params.set('date_to', dateTo);
+        if (module)   params.set('module', module);
+        if (userId)   params.set('user_id', userId);
+
+        try {
+            var response = await fetch('/api/activity-logs?' + params.toString());
+            var data = await response.json();
+            renderLogs(data);
+        } catch (error) {
+            document.getElementById('logsContent').innerHTML = '<div style="text-align: center; padding: 40px; color: #dc3545;">Failed to load logs</div>';
+        }
+    }
+
+    function renderLogs(data) {
+        var logs = data.logs || [];
+        var total = data.total || 0;
+        var page  = data.page || 1;
+        var limit = data.limit || 50;
+        var totalPages = Math.ceil(total / limit);
+
+        if (logs.length === 0) {
+            document.getElementById('logsContent').innerHTML = '<div style="text-align: center; padding: 40px; background: white; border-radius: 12px;">No activity logs found.</div>';
+            document.getElementById('pagination').style.display = 'none';
+            return;
+        }
+
+        var html = '<div class="table-container"><table><thead><tr><th>Timestamp</th><th>User</th><th>Role</th><th>Module</th><th>Action</th><th>Description</th></tr></thead><tbody>';
+        logs.forEach(function(log) {
+            var ts = log.timestamp ? new Date(log.timestamp + 'Z').toLocaleString('en-PK', { timeZone: 'UTC' }) : '—';
+            html += '<tr>' +
+                '<td style="white-space:nowrap;">' + escapeHtml(ts) + '</td>' +
+                '<td>' + escapeHtml(log.user_name || 'User #' + log.user_id) + '</td>' +
+                '<td><span class="badge-' + log.user_role + '">' + log.user_role.charAt(0).toUpperCase() + log.user_role.slice(1) + '</span></td>' +
+                '<td>' + escapeHtml(log.module) + '</td>' +
+                '<td>' + escapeHtml(log.action_type.replace(/_/g, ' ')) + '</td>' +
+                '<td>' + escapeHtml(log.description || '') + '</td>' +
+                '</tr>';
+        });
+        html += '</tbody></table></div>';
+        document.getElementById('logsContent').innerHTML = html;
+
+        // Pagination
+        if (totalPages > 1) {
+            var pagHtml = '';
+            if (page > 1) pagHtml += '<button class="btn-small" onclick="goToPage(' + (page - 1) + ')">← Prev</button> ';
+            pagHtml += '<span style="margin: 0 12px;">Page ' + page + ' of ' + totalPages + ' (' + total + ' total)</span>';
+            if (page < totalPages) pagHtml += '<button class="btn-small" onclick="goToPage(' + (page + 1) + ')">Next →</button>';
+            document.getElementById('pagination').innerHTML = pagHtml;
+            document.getElementById('pagination').style.display = 'block';
+        } else {
+            document.getElementById('pagination').innerHTML = '<span>' + total + ' log entries</span>';
+            document.getElementById('pagination').style.display = 'block';
+        }
+    }
+
+    function goToPage(page) {
+        currentPage = page;
+        fetchLogs();
+    }
+
+    async function loadUserFilter() {
+        try {
+            var response = await fetch('/api/users');
+            var users = await response.json();
+            var select = document.getElementById('filterUser');
+            users.forEach(function(u) {
+                var opt = document.createElement('option');
+                opt.value = u.user_id;
+                opt.textContent = u.name + ' (' + u.email + ')';
+                select.appendChild(opt);
+            });
+        } catch(e) {}
+    }
+
+    whenUserReady(function(role) {
+        userRole = role;
+        loadUserFilter();
+        loadLogs();
+    });
+</script>
+
+<style>
+    .section-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; flex-wrap: wrap; gap: 10px; }
+    .filter-bar { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+    .filter-bar input, .filter-bar select { padding: 8px 12px; border: 1px solid #ddd; border-radius: 6px; font-size: 14px; }
+    .badge-admin { background: #e3f2fd; color: #1565c0; padding: 3px 10px; border-radius: 12px; font-size: 12px; font-weight: 600; }
+    .badge-manager { background: #fff3e0; color: #e65100; padding: 3px 10px; border-radius: 12px; font-size: 12px; font-weight: 600; }
+    .badge-staff { background: #f3e5f5; color: #7b1fa2; padding: 3px 10px; border-radius: 12px; font-size: 12px; font-weight: 600; }
+</style>
+{% endblock %}

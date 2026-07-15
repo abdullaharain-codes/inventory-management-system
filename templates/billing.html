@@ -80,20 +80,6 @@
   </div>
 </div>
 
-<div class="print-overlay" id="printOverlay" style="display:none;">
-  <div class="print-modal" style="width:480px;">
-    <div class="print-modal-header">
-      <h3>🧾 Receipt</h3>
-      <button class="remove-btn" id="closeReceiptBtn" style="font-size:18px;">&times;</button>
-    </div>
-    <div class="print-modal-body" id="receiptBody"></div>
-    <div class="print-modal-footer">
-      <button class="btn-clear-order" id="closeReceiptBtn2" style="width:auto;padding:8px 14px;">Close</button>
-      <button class="btn-charge" id="printBtn" style="width:auto;padding:8px 20px;margin:0;">🖨️ Print</button>
-    </div>
-  </div>
-</div>
-
 <style>
 .pos-right-body {
   flex: 1; min-height: 0; overflow-y: auto; overflow-x: hidden;
@@ -127,7 +113,8 @@
 @media print {
   body > *:not(#printOverlay) { display: none !important; }
   #printOverlay { position: static !important; background: white !important; }
-  .print-modal { box-shadow: none !important; border: none !important; width: 100% !important; }
+  .print-modal { box-shadow: none !important; border: none !important; }
+  .print-modal:not(.receipt-thermal) { width: 100% !important; }
   .print-modal-header, .print-modal-footer { display: none !important; }
   .print-modal-body { padding: 0 !important; }
 }
@@ -366,21 +353,26 @@
   }
 
   function showReceipt(billId) {
-    return fetch('/api/bills/' + billId)
-      .then(function(r){ return r.json(); })
-      .then(function(bill){
+    window.__currentBillId = billId;
+    return Promise.all([
+      fetch('/api/bills/' + billId).then(function(r){ return r.json(); }),
+      fetch('/api/company-info')
+        .then(function(r){ return r.json(); })
+        .then(function(data){ window.__lastCompanyInfo = data; return data; })
+        .catch(function(){
+          console.warn('company-info fetch failed, using cached/default — invoice format setting will not be honored');
+          return window.__lastCompanyInfo || {};
+        })
+    ])
+      .then(function(results){
+        var bill = results[0];
+        var company = results[1];
         /* FIX: use global fmtDate from base.html — no timezone shift */
         var dateStr = fmtDate(bill.bill_date);
 
-        var itemsHtml = '';
-        bill.items.forEach(function(item, i){
-          itemsHtml += '<tr>' +
-            '<td style="padding:6px 8px;">' + (i+1) + '. ' + escapeHtml(item.product_name) + '</td>' +
-            '<td style="padding:6px 8px;text-align:center;">' + item.quantity + '</td>' +
-            '<td style="padding:6px 8px;text-align:right;">' + fmt(item.unit_price) + '</td>' +
-            '<td style="padding:6px 8px;text-align:right;font-weight:500;">' + fmt(item.item_total) + '</td>' +
-            '</tr>';
-        });
+        var invoiceFmt = company.invoice_format || 'a4';
+        var pm = document.querySelector('.print-modal');
+        if (pm) pm.classList.toggle('receipt-thermal', invoiceFmt === 'thermal_80mm');
 
         var customerHtml = bill.customer_name
           ? '<div style="margin-bottom:6px;"><strong>Customer:</strong> ' + escapeHtml(bill.customer_name) +
@@ -400,11 +392,12 @@
           ? '<div style="display:flex;justify-content:space-between;font-size:12px;margin-bottom:3px;color:#059669;">' +
             '<span>GST (' + bill.gst_percent + '%)</span><span>+' + fmt(bill.gst_amount) + '</span></div>' : '';
 
+        var itemsBlock = buildReceiptItemsHtml(bill.items || [], invoiceFmt, fmt);
+
         /* FIX: grand_total now includes GST (DB generated column fixed) */
         document.getElementById('receiptBody').innerHTML =
           '<div style="font-family:\'Courier New\',monospace;font-size:13px;">' +
-          '<div style="text-align:center;font-size:16px;font-weight:bold;margin-bottom:2px;">INVENTORY MANAGEMENT SYSTEM</div>' +
-          '<div style="text-align:center;font-size:11px;color:#6b7280;margin-bottom:12px;">Official Receipt</div>' +
+          '<div style="text-align:center;margin-bottom:12px;">' + buildCompanyHeaderHtml(company) + '</div>' +
           '<hr style="border:none;border-top:1px dashed #d1d5db;margin:8px 0;">' +
           '<div style="font-size:12px;margin-bottom:8px;">' +
           '<strong>Bill No:</strong> ' + escapeHtml(bill.bill_number) + '<br>' +
@@ -413,13 +406,7 @@
           '<strong>Payment:</strong> ' + (payBadge[bill.payment_method] || bill.payment_method) + ' ' + statusBadge +
           '</div>' +
           '<hr style="border:none;border-top:1px dashed #d1d5db;margin:8px 0;">' +
-          '<table style="width:100%;border-collapse:collapse;">' +
-          '<thead><tr style="background:#1e293b;color:#fff;">' +
-          '<th style="padding:6px 8px;text-align:left;">Item</th>' +
-          '<th style="padding:6px 8px;text-align:center;">Qty</th>' +
-          '<th style="padding:6px 8px;text-align:right;">Price</th>' +
-          '<th style="padding:6px 8px;text-align:right;">Total</th>' +
-          '</tr></thead><tbody>' + itemsHtml + '</tbody></table>' +
+          itemsBlock +
           '<hr style="border:none;border-top:1px dashed #d1d5db;margin:8px 0;">' +
           '<div style="font-size:12px;">' +
           '<div style="display:flex;justify-content:space-between;margin-bottom:3px;">' +
@@ -433,6 +420,15 @@
           'Thank you for your business!<br>' + new Date().toLocaleTimeString() + '</div></div>';
 
         document.getElementById('printOverlay').style.display = 'flex';
+        var measured = 0;
+        if (invoiceFmt === 'thermal_80mm' && pm) {
+          var origW = pm.style.width;
+          pm.style.width = '76mm';
+          void pm.offsetHeight;
+          measured = document.getElementById('receiptBody').scrollHeight;
+          pm.style.width = origW;
+        }
+        applyPrintPageSize(invoiceFmt, measured);
       })
       .catch(function(e){ console.error(e); showToast('Could not load receipt', 'error'); });
   }
@@ -447,10 +443,30 @@
     document.getElementById('clearOrderBtn').addEventListener('click', clearOrder);
     document.getElementById('closeReceiptBtn').addEventListener('click', closeReceipt);
     document.getElementById('closeReceiptBtn2').addEventListener('click', closeReceipt);
+    document.getElementById('downloadPdfBtn').addEventListener('click', function(){
+      if (window.__currentBillId) window.open('/api/bills/' + window.__currentBillId + '/invoice-pdf', '_blank');
+    });
     document.getElementById('printBtn').addEventListener('click', function(){ window.print(); });
     initPaymentButtons();
     loadCart(); renderOrder(); loadProducts(); loadNextBillNumber();
   });
 })();
 </script>
+{% endblock %}
+
+{% block overlays %}
+<div class="print-overlay" id="printOverlay" style="display:none;">
+  <div class="print-modal" style="width:480px;">
+    <div class="print-modal-header">
+      <h3>Receipt</h3>
+      <button class="remove-btn" id="closeReceiptBtn" style="font-size:18px;">&times;</button>
+    </div>
+    <div class="print-modal-body" id="receiptBody"></div>
+    <div class="print-modal-footer">
+      <button class="btn-clear-order" id="closeReceiptBtn2" style="width:auto;padding:8px 14px;">Close</button>
+      <button class="btn-charge" id="downloadPdfBtn" style="width:auto;padding:8px 14px;margin:0;">Download PDF</button>
+      <button class="btn-charge" id="printBtn" style="width:auto;padding:8px 20px;margin:0;">Print</button>
+    </div>
+  </div>
+</div>
 {% endblock %}

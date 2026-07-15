@@ -1,0 +1,112 @@
+{% extends "base.html" %}
+{% block title %}Settings - IMS{% endblock %}
+{% block page_title %}Company Settings{% endblock %}
+
+{% block content %}
+<div style="max-width:600px;">
+    <div id="settingsForm">
+        <div style="text-align:center;padding:40px;">Loading settings...</div>
+    </div>
+</div>
+
+<script>
+    var userRole = 'admin';
+
+    async function loadSettings() {
+        try {
+            var info = await fetch('/api/company-info').then(function(r){ return r.json(); });
+            renderForm(info);
+        } catch(e) {
+            document.getElementById('settingsForm').innerHTML =
+                '<div style="text-align:center;padding:40px;color:#dc2626;">Failed to load settings.</div>';
+        }
+    }
+
+    function renderForm(info) {
+        var fmt = info.invoice_format || 'a4';
+        var html =
+            '<div style="background:#fff;border-radius:12px;padding:24px 28px;box-shadow:0 1px 3px rgba(0,0,0,0.08);">' +
+            '<h3 style="font-size:16px;font-weight:600;margin-bottom:20px;color:#1e293b;">Company Information</h3>' +
+
+            '<div class="form-group"><label>Company Name</label>' +
+            '<input type="text" id="sett_company_name" value="' + escapeHtml(info.company_name || '') + '"></div>' +
+
+            '<div class="form-group"><label>Address</label>' +
+            '<input type="text" id="sett_address" value="' + escapeHtml(info.address || '') + '"></div>' +
+
+            '<div class="form-group"><label>Phone</label>' +
+            '<input type="text" id="sett_phone" value="' + escapeHtml(info.phone || '') + '"></div>' +
+
+            '<div class="form-group"><label>GST Number</label>' +
+            '<input type="text" id="sett_gst_number" value="' + escapeHtml(info.gst_number || '') + '" placeholder="Optional"></div>' +
+
+            '<div class="form-group"><label>Tagline</label>' +
+            '<input type="text" id="sett_tagline" value="' + escapeHtml(info.tagline || '') + '" placeholder="Optional"></div>' +
+
+            '<div class="form-group"><label>Invoice Format</label>' +
+            '<select id="sett_invoice_format">' +
+            '<option value="a4"' + (fmt === 'a4' ? ' selected' : '') + '>A4 (Standard Paper)</option>' +
+            '<option value="thermal_80mm"' + (fmt === 'thermal_80mm' ? ' selected' : '') + '>Thermal Receipt (80mm)</option>' +
+            '</select></div>' +
+
+            '<div style="margin-top:20px;">' +
+            '<button class="btn-charge" id="saveSettingsBtn" onclick="saveSettings()">Save Changes</button>' +
+            '</div></div>';
+
+        document.getElementById('settingsForm').innerHTML = html;
+    }
+
+    async function saveSettings() {
+        var btn = document.getElementById('saveSettingsBtn');
+        btn.disabled = true;
+        btn.textContent = 'Saving...';
+
+        var payload = {
+            company_name:   document.getElementById('sett_company_name').value.trim(),
+            address:        document.getElementById('sett_address').value.trim(),
+            phone:          document.getElementById('sett_phone').value.trim(),
+            gst_number:     document.getElementById('sett_gst_number').value.trim() || null,
+            tagline:        document.getElementById('sett_tagline').value.trim() || null,
+            invoice_format: document.getElementById('sett_invoice_format').value
+        };
+
+        try {
+            var res = await fetch('/api/company-info', {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(payload)
+            });
+            var data = await res.json();
+            if (!res.ok) throw new Error(data.error || 'Failed to save');
+            showToast('Settings saved successfully', 'success');
+            renderForm(data);
+        } catch(e) {
+            showToast(e.message, 'error');
+        } finally {
+            btn.disabled = false;
+            btn.textContent = 'Save Changes';
+        }
+    }
+
+    whenUserReady(function(role) {
+        userRole = role;
+        loadSettings();
+    });
+</script>
+
+<style>
+    .form-group { margin-bottom: 14px; }
+    .form-group label { display: block; font-size: 12px; font-weight: 600; color: #374151; margin-bottom: 4px; }
+    .form-group input, .form-group select {
+        width: 100%; padding: 8px 12px; border: 1px solid #e5e7eb; border-radius: 8px;
+        font-size: 13px; outline: none; font-family: inherit; box-sizing: border-box;
+    }
+    .form-group input:focus, .form-group select:focus { border-color: #3b82f6; }
+    .btn-charge {
+        padding: 10px 24px; background: #1e293b; color: #fff; border: none;
+        border-radius: 8px; font-size: 13px; font-weight: 600; cursor: pointer;
+    }
+    .btn-charge:hover { background: #334155; }
+    .btn-charge:disabled { background: #9ca3af; cursor: not-allowed; }
+</style>
+{% endblock %}

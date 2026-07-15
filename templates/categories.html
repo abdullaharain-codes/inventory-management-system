@@ -1,0 +1,220 @@
+{% extends "base.html" %}
+
+{% block title %}Categories - Inventory System{% endblock %}
+{% block page_title %}Categories Management{% endblock %}
+
+{% block content %}
+<div id="accessDenied" style="display:none; text-align: center; padding: 60px 20px; background: #fff; border-radius: 12px;">
+    <div style="font-size: 48px; margin-bottom: 16px;">🚫</div>
+    <h2 style="font-size: 20px; color: #111827; margin-bottom: 8px;">Access Denied</h2>
+    <p style="color: #6b7280; font-size: 14px;">You do not have permission to access this page.</p>
+</div>
+<div id="categoriesPageContent">
+    <div class="section-header">
+        <button class="btn-primary" onclick="showAddCategoryModal()">+ Add Category</button>
+    </div>
+    <div id="categoriesContent">
+        <div style="text-align: center; padding: 40px;">Loading categories...</div>
+    </div>
+</div>
+
+<script>
+    var userRole = 'staff';
+
+    async function loadCategories() {
+        try {
+            const response = await fetch('/api/categories');
+            const categories = await response.json();
+            renderCategoriesTable(categories);
+        } catch (error) {
+            console.error('Error:', error);
+            document.getElementById('categoriesContent').innerHTML = '<div style="text-align: center; padding: 40px; color: #dc3545;">Failed to load categories</div>';
+            showToast('Failed to load categories', 'error');
+        }
+    }
+
+    function renderCategoriesTable(categories) {
+        if (categories.length === 0) {
+            document.getElementById('categoriesContent').innerHTML = '<div style="text-align: center; padding: 40px; background: white; border-radius: 12px;">No categories found.</div>';
+            return;
+        }
+
+        const html = `
+            <div class="table-container">
+                <table>
+                    <thead>
+                        <tr><th>ID</th><th>Category Name</th><th>Parent Category</th><th>Product Count</th><th>Actions</th></tr>
+                    </thead>
+                    <tbody>
+                        ${categories.map(cat => `
+                            <tr>
+                                <td>${cat.category_id}</td>
+                                <td>${escapeHtml(cat.name)}</td>
+                                <td>${escapeHtml(cat.parent_name || '-')}</td>
+                                <td>${cat.product_count}</td>
+                                <td>
+                                    <button class="btn-small" onclick="showEditCategoryModal(${cat.category_id})">✏️ Edit</button>
+                                    ${userRole === 'admin' ? `<button class="btn-small btn-danger" onclick="deleteCategory(${cat.category_id})">🗑️ Delete</button>` : ''}
+                                </td>
+                            </tr>
+                        `).join('')}
+                    </tbody>
+                </table>
+            </div>
+        `;
+        document.getElementById('categoriesContent').innerHTML = html;
+    }
+
+    async function fetchCategories() {
+        const res = await fetch('/api/categories');
+        return res.json();
+    }
+
+    function buildParentDropdown(categories, excludeId, parentId) {
+        // Build a set of descendants of excludeId to filter them out
+        var descendants = new Set();
+        if (excludeId) {
+            function findDescendants(id) {
+                categories.forEach(function(c) {
+                    if (c.parent_category_id === id && c.category_id !== id) {
+                        descendants.add(c.category_id);
+                        findDescendants(c.category_id);
+                    }
+                });
+            }
+            findDescendants(excludeId);
+            descendants.add(excludeId);
+        }
+
+        var html = '<option value="">None (top-level category)</option>';
+        categories.forEach(function(c) {
+            if (!descendants.has(c.category_id)) {
+                var sel = c.category_id === parentId ? 'selected' : '';
+                var indent = '';
+                // Show parent relationship
+                html += '<option value="' + c.category_id + '" ' + sel + '>' + escapeHtml(c.name) + '</option>';
+            }
+        });
+        return html;
+    }
+
+    function showAddCategoryModal() {
+        fetchCategories().then(function(categories) {
+            const formHTML = `
+                <form id="categoryForm">
+                    <div class="form-group"><label>Category Name *</label><input type="text" id="name" required></div>
+                    <div class="form-group"><label>Parent Category</label>
+                        <select id="parent_category_id">
+                            ${buildParentDropdown(categories, null, null)}
+                        </select>
+                    </div>
+                </form>
+            `;
+
+            openModal('Add Category', formHTML, async function() {
+                const name = document.getElementById('name').value.trim();
+                if (!name) {
+                    showToast('Category name is required', 'error');
+                    return;
+                }
+                const parentVal = document.getElementById('parent_category_id').value;
+                const data = {
+                    name: name,
+                    parent_category_id: parentVal ? parseInt(parentVal) : null
+                };
+
+                try {
+                    const response = await fetch('/api/categories', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify(data)
+                    });
+                    const result = await response.json();
+                    if (response.ok) {
+                        showToast('Category added successfully', 'success');
+                        closeModal();
+                        loadCategories();
+                    } else {
+                        showToast(result.error || 'Failed to add category', 'error');
+                    }
+                } catch (error) {
+                    showToast('Failed to add category', 'error');
+                }
+            });
+        });
+    }
+
+    async function showEditCategoryModal(id) {
+        const categories = await fetchCategories();
+        const cat = categories.find(c => c.category_id === id);
+
+        const formHTML = `
+            <form id="categoryForm">
+                <div class="form-group"><label>Category Name *</label><input type="text" id="name" value="${escapeHtml(cat.name)}" required></div>
+                <div class="form-group"><label>Parent Category</label>
+                    <select id="parent_category_id">
+                        ${buildParentDropdown(categories, id, cat.parent_category_id)}
+                    </select>
+                </div>
+            </form>
+        `;
+
+        openModal('Edit Category', formHTML, async function() {
+            const name = document.getElementById('name').value.trim();
+            if (!name) {
+                showToast('Category name is required', 'error');
+                return;
+            }
+            const parentVal = document.getElementById('parent_category_id').value;
+            const data = {
+                name: name,
+                parent_category_id: parentVal ? parseInt(parentVal) : null
+            };
+
+            try {
+                const response = await fetch('/api/categories/' + id, {
+                    method: 'PUT',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(data)
+                });
+                const result = await response.json();
+                if (response.ok) {
+                    showToast('Category updated successfully', 'success');
+                    closeModal();
+                    loadCategories();
+                } else {
+                    showToast(result.error || 'Failed to update category', 'error');
+                }
+            } catch (error) {
+                showToast('Failed to update category', 'error');
+            }
+        });
+    }
+
+    async function deleteCategory(id) {
+        if (!confirm('Are you sure you want to delete this category?')) return;
+
+        try {
+            const response = await fetch('/api/categories/' + id, { method: 'DELETE' });
+            const result = await response.json();
+            if (response.ok) {
+                showToast('Category deleted successfully', 'success');
+                loadCategories();
+            } else {
+                showToast(result.error || 'Failed to delete category', 'error');
+            }
+        } catch (error) {
+            showToast('Failed to delete category', 'error');
+        }
+    }
+
+    whenUserReady(function(role) {
+        userRole = role;
+        if (role === 'staff') {
+            document.getElementById('categoriesPageContent').style.display = 'none';
+            document.getElementById('accessDenied').style.display = 'block';
+        }
+        loadCategories();
+    });
+</script>
+{% endblock %}

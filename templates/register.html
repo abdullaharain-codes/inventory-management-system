@@ -1,0 +1,129 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Register — IMS</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+    <style>
+        html, body { height:100%; overflow:auto; background:#f1f5f9; }
+        .auth-wrapper { min-height:100vh; display:flex; align-items:center; justify-content:center; padding:20px; }
+        .auth-card { background:#fff; border-radius:14px; padding:40px 36px; width:100%; max-width:440px; box-shadow:0 4px 24px rgba(0,0,0,0.10); }
+        .auth-logo { text-align:center; margin-bottom:24px; }
+        .auth-logo h1 { font-size:1.6rem; font-weight:700; color:#1e293b; margin-bottom:4px; }
+        .auth-logo p  { font-size:0.875rem; color:#6b7280; }
+        .auth-title { font-size:1.1rem; font-weight:600; color:#111827; margin-bottom:20px; text-align:center; }
+        .form-group { margin-bottom:16px; }
+        .form-group label { display:block; font-size:0.875rem; font-weight:500; color:#374151; margin-bottom:5px; }
+        .form-group input, .form-group select { width:100%; padding:10px 14px; border:1px solid #d1d5db; border-radius:8px; font-size:0.9rem; box-sizing:border-box; }
+        .form-group input:focus, .form-group select:focus { outline:none; border-color:#1e293b; }
+        .btn-auth { width:100%; padding:12px; background:#1e293b; color:#fff; border:none; border-radius:8px; font-size:0.95rem; font-weight:600; cursor:pointer; }
+        .btn-auth:hover { background:#0f172a; }
+        .btn-auth:disabled { opacity:0.6; cursor:not-allowed; }
+        .auth-error   { background:#fef2f2; border:1px solid #fca5a5; color:#dc2626; padding:10px 14px; border-radius:8px; font-size:0.875rem; margin-bottom:14px; display:none; }
+        .auth-success { background:#f0fdf4; border:1px solid #86efac; color:#16a34a; padding:10px 14px; border-radius:8px; font-size:0.875rem; margin-bottom:14px; display:none; }
+        .auth-links { text-align:center; margin-top:18px; font-size:0.875rem; color:#6b7280; }
+        .auth-links a { color:#1e293b; text-decoration:none; font-weight:500; }
+        .password-rules { font-size:11px; color:#9ca3af; margin-top:4px; line-height:1.6; }
+    </style>
+</head>
+<body>
+<div class="auth-wrapper">
+    <div class="auth-card">
+        <div class="auth-logo">
+            <h1>📦 IMS</h1>
+            <p>Inventory Management System</p>
+        </div>
+        <div class="auth-title">Create a new account</div>
+
+        <div class="auth-error"   id="errorMsg"></div>
+        <div class="auth-success" id="successMsg"></div>
+
+        <div class="form-group">
+            <label>Full Name</label>
+            <input type="text" id="name" placeholder="John Smith">
+        </div>
+        <div class="form-group">
+            <label>Email Address</label>
+            <input type="email" id="email" placeholder="you@example.com">
+        </div>
+        <div class="form-group">
+            <label>Role</label>
+            <select id="role">
+                <option value="staff">Staff</option>
+                <option value="admin">Admin</option>
+            </select>
+        </div>
+        <div class="form-group">
+            <label>Password</label>
+            <input type="password" id="password" placeholder="Create a strong password">
+            <div class="password-rules">
+                Must be 8+ characters with uppercase, lowercase, number, and special character.
+            </div>
+        </div>
+        <div class="form-group">
+            <label>Confirm Password</label>
+            <input type="password" id="confirmPassword" placeholder="Repeat your password">
+        </div>
+
+        <button class="btn-auth" id="registerBtn" onclick="doRegister()">Create Account</button>
+
+        <div class="auth-links">
+            Already have an account? <a href="/login">Sign in</a>
+        </div>
+    </div>
+</div>
+
+<script>
+    document.addEventListener('keydown', function(e) {
+        if (e.key === 'Enter') doRegister();
+    });
+
+    async function doRegister() {
+        var name     = document.getElementById('name').value.trim();
+        var email    = document.getElementById('email').value.trim();
+        var role     = document.getElementById('role').value;
+        var password = document.getElementById('password').value;
+        var confirm  = document.getElementById('confirmPassword').value;
+        var btn      = document.getElementById('registerBtn');
+
+        hideMessages();
+
+        if (!name || !email || !password || !confirm) {
+            showError('All fields are required.'); return;
+        }
+        if (password !== confirm) {
+            showError('Passwords do not match.'); return;
+        }
+
+        btn.disabled    = true;
+        btn.textContent = 'Creating account...';
+
+        try {
+            var res = await fetch('/api/auth/register', {
+                method:  'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body:    JSON.stringify({ name, email, role, password })
+            });
+            var data = await res.json();
+
+            if (res.ok) {
+                showSuccess('Account created! Redirecting to login...');
+                setTimeout(function(){ window.location.href = '/login'; }, 1800);
+            } else {
+                showError(data.error || 'Registration failed.');
+            }
+        } catch(e) {
+            showError('Network error. Please try again.');
+        } finally {
+            btn.disabled    = false;
+            btn.textContent = 'Create Account';
+        }
+    }
+
+    function showError(msg)   { var e=document.getElementById('errorMsg');   e.textContent=msg; e.style.display='block'; }
+    function showSuccess(msg) { var e=document.getElementById('successMsg'); e.textContent=msg; e.style.display='block'; }
+    function hideMessages()   { document.getElementById('errorMsg').style.display='none'; document.getElementById('successMsg').style.display='none'; }
+</script>
+</body>
+</html>

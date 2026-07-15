@@ -1,0 +1,264 @@
+{% extends "base.html" %}
+{% block title %}Inventory - IMS{% endblock %}
+{% block page_title %}Inventory Management{% endblock %}
+
+{% block content %}
+<div class="section-header">
+    <div class="tabs">
+        <button class="tab-btn active" data-tab="stock-status" onclick="switchTab('stock-status')">📊 Stock Status</button>
+        <button class="tab-btn" data-tab="stock-ledger" id="ledgerTabBtn" onclick="switchTab('stock-ledger')">📋 Stock Ledger</button>
+        <button class="tab-btn" data-tab="alerts" id="alertsTabBtn" onclick="switchTab('alerts')">⚠️ Alerts <span id="alertCountBadge" style="display:none;background:#dc2626;color:#fff;border-radius:10px;padding:1px 7px;font-size:11px;margin-left:4px;"></span></button>
+    </div>
+</div>
+
+<div id="stockStatusTab" class="tab-content active">
+    <div id="stockStatusContent">
+        <div class="loading-msg">Loading stock status...</div>
+    </div>
+</div>
+
+<div id="stockLedgerTab" class="tab-content">
+    <div class="filters-bar" id="ledgerFilters">
+        <input type="number" id="ledgerProductId" placeholder="Product ID" class="search-input" style="max-width:120px;">
+        <select id="ledgerMovementType" class="search-input" style="max-width:160px;">
+            <option value="">All Types</option>
+            <option value="sale">Sale</option>
+            <option value="bill_sale">Bill Sale</option>
+            <option value="refund">Refund</option>
+            <option value="adjustment">Adjustment</option>
+            <option value="purchase">Purchase</option>
+            <option value="opening_balance">Opening Balance</option>
+        </select>
+        <input type="date" id="ledgerDateFrom" class="search-input" style="max-width:150px;">
+        <input type="date" id="ledgerDateTo" class="search-input" style="max-width:150px;">
+        <button class="btn-primary" onclick="loadLedger()">Filter</button>
+    </div>
+    <div id="stockLedgerContent">
+        <div class="loading-msg">Loading stock ledger...</div>
+    </div>
+</div>
+
+<div id="alertsTab" class="tab-content">
+    <div id="alertsContent">
+        <div class="loading-msg">Loading alerts...</div>
+    </div>
+</div>
+
+<style>
+    .tabs { display: flex; gap: 0; }
+    .tab-btn {
+        padding: 10px 20px;
+        border: 1px solid var(--border-light);
+        background: #fff;
+        cursor: pointer;
+        font-size: 0.875rem;
+        font-weight: 500;
+        color: var(--text-gray);
+        border-radius: 8px 8px 0 0;
+        margin-right: 2px;
+    }
+    .tab-btn.active {
+        background: var(--accent-blue);
+        color: #fff;
+        border-color: var(--accent-blue);
+    }
+    .tab-content { display: none; }
+    .tab-content.active { display: block; }
+    .filters-bar {
+        display: flex;
+        gap: 8px;
+        align-items: center;
+        margin-bottom: 16px;
+        flex-wrap: wrap;
+        background: #fff;
+        padding: 12px;
+        border-radius: 8px;
+        box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+    }
+    .status-badge {
+        display: inline-block;
+        padding: 3px 8px;
+        border-radius: 4px;
+        font-size: 0.8rem;
+        font-weight: 600;
+    }
+    .status-badge.low  { background: #fee2e2; color: #dc2626; }
+    .status-badge.ok   { background: #dcfce7; color: #16a34a; }
+    .alert-section { margin-bottom: 24px; }
+    .alert-section h3 { font-size: 1rem; margin-bottom: 10px; }
+</style>
+
+<script>
+    var userRole = 'staff';
+
+    function switchTab(name) {
+        document.querySelectorAll('.tab-btn').forEach(function(b) { b.classList.remove('active'); });
+        document.querySelectorAll('.tab-content').forEach(function(c) { c.classList.remove('active'); });
+
+        var activeBtn = document.querySelector('.tab-btn[data-tab="' + name + '"]');
+        if (activeBtn) activeBtn.classList.add('active');
+
+        var tabId = name === 'stock-status' ? 'stockStatusTab' :
+                    name === 'stock-ledger' ? 'stockLedgerTab' : 'alertsTab';
+        var tabContent = document.getElementById(tabId);
+        if (tabContent) tabContent.classList.add('active');
+
+        if (name === 'stock-status') loadStockStatus();
+        if (name === 'stock-ledger') loadLedger();
+        if (name === 'alerts') loadAlerts();
+    }
+
+    // Hide Ledger tab for staff
+    window.whenUserReady(function(role) {
+        userRole = role;
+        if (role === 'staff') {
+            var ledgerBtn = document.getElementById('ledgerTabBtn');
+            if (ledgerBtn) ledgerBtn.style.display = 'none';
+        }
+    });
+
+    async function loadStockStatus() {
+        try {
+            var res = await fetch('/api/inventory/stock-status');
+            var products = await res.json();
+            var html = '<div class="table-container">';
+            html += '<table><thead><tr><th>ID</th><th>Product</th><th>SKU</th><th>Category</th><th>Current Stock</th><th>Min Threshold</th><th>Reorder Qty</th><th>Status</th></tr></thead><tbody>';
+            products.forEach(function(p) {
+                var badge = p.is_low_stock
+                    ? '<span class="status-badge low">Low Stock</span>'
+                    : '<span class="status-badge ok">OK</span>';
+                html += '<tr' + (p.is_low_stock ? ' class="low-stock"' : '') + '>';
+                html += '<td>' + p.product_id + '</td>';
+                html += '<td>' + escapeHtml(p.name) + '</td>';
+                html += '<td>' + escapeHtml(p.sku || '-') + '</td>';
+                html += '<td>' + escapeHtml(p.category || '-') + '</td>';
+                html += '<td>' + p.stock_quantity + '</td>';
+                html += '<td>' + p.minimum_stock_threshold + '</td>';
+                html += '<td>' + p.reorder_quantity + '</td>';
+                html += '<td>' + badge + '</td>';
+                html += '</tr>';
+            });
+            html += '</tbody></table></div>';
+            document.getElementById('stockStatusContent').innerHTML = html;
+        } catch (e) {
+            console.error(e);
+            document.getElementById('stockStatusContent').innerHTML = '<p style="color:red;text-align:center;padding:40px">Failed to load stock status.</p>';
+        }
+    }
+
+    async function loadLedger(page) {
+        page = page || 1;
+        var productId   = document.getElementById('ledgerProductId').value;
+        var movementType = document.getElementById('ledgerMovementType').value;
+        var dateFrom    = document.getElementById('ledgerDateFrom').value;
+        var dateTo      = document.getElementById('ledgerDateTo').value;
+        var params = new URLSearchParams({ page: page, limit: 50 });
+        if (productId) params.set('product_id', productId);
+        if (movementType) params.set('movement_type', movementType);
+        if (dateFrom) params.set('date_from', dateFrom);
+        if (dateTo) params.set('date_to', dateTo);
+        try {
+            var res = await fetch('/api/inventory/ledger?' + params.toString());
+            var data = await res.json();
+            var logs = data.ledger || [];
+            var html = '<div class="table-container">';
+            if (logs.length === 0) {
+                html += '<p class="empty-msg">No stock movements recorded yet.</p>';
+            } else {
+            html += '<table><thead><tr><th>Date</th><th>Product</th><th>Type</th><th>Change</th><th>Before</th><th>After</th><th>Actor</th><th>Reference</th><th>Notes</th></tr></thead><tbody>';
+            logs.forEach(function(r) {
+                var changeCls = r.quantity_change < 0 ? 'style="color:#dc2626;font-weight:600;"' : 'style="color:#16a34a;font-weight:600;"';
+                html += '<tr>';
+                html += '<td>' + fmtDate(r.created_at) + '</td>';
+                html += '<td>' + escapeHtml(r.product_name || '') + '</td>';
+                html += '<td>' + escapeHtml(r.movement_type || '') + '</td>';
+                html += '<td ' + changeCls + '>' + (r.quantity_change > 0 ? '+' : '') + r.quantity_change + '</td>';
+                html += '<td>' + r.quantity_before + '</td>';
+                html += '<td>' + r.quantity_after + '</td>';
+                html += '<td>' + escapeHtml(r.actor_name || '-') + '</td>';
+                html += '<td>' + (r.reference_type ? escapeHtml(r.reference_type) + ' #' + r.reference_id : '-') + '</td>';
+                html += '<td>' + escapeHtml(r.notes || '') + '</td>';
+                html += '</tr>';
+            });
+            html += '</tbody></table>';
+            // Pagination
+            var totalPages = Math.ceil(data.total / data.limit);
+            if (totalPages > 1) {
+                html += '<div style="margin-top:12px;display:flex;gap:6px;justify-content:center;">';
+                for (var i = 1; i <= totalPages; i++) {
+                    var active = i === page ? ' class="btn-primary"' : ' class="btn-secondary"';
+                    html += '<button ' + active + ' onclick="loadLedger(' + i + ')" style="padding:4px 10px;font-size:0.8rem;">' + i + '</button>';
+                }
+                html += '</div>';
+            }
+            html += '</div>';
+            }
+            document.getElementById('stockLedgerContent').innerHTML = html;
+        } catch (e) {
+            console.error(e);
+            document.getElementById('stockLedgerContent').innerHTML = '<p style="color:red;text-align:center;padding:40px">Failed to load ledger.</p>';
+        }
+    }
+
+    async function loadAlerts() {
+        try {
+            var res = await fetch('/api/inventory/alerts');
+            var alerts = await res.json();
+
+            var lowStockAlerts = alerts.filter(function(a) { return a.alert_type === 'low_stock'; });
+            var expiryAlerts = alerts.filter(function(a) { return a.alert_type === 'expiry_soon'; });
+
+            var html = '';
+
+            if (lowStockAlerts.length === 0 && expiryAlerts.length === 0) {
+                html = '<div class="table-container"><p class="empty-msg" style="color:#16a34a;font-weight:600;">✅ All good! No alerts.</p></div>';
+            } else {
+                // Low Stock section
+                if (lowStockAlerts.length > 0) {
+                    html += '<div class="alert-section"><div class="table-container">';
+                    html += '<h3>⚠️ Low Stock Alerts (' + lowStockAlerts.length + ')</h3>';
+                    html += '<table><thead><tr><th>Product</th><th>Category</th><th>Current Stock</th><th>Threshold</th><th>Reorder Qty</th>' + (userRole !== 'staff' ? '<th>Action</th>' : '') + '</tr></thead><tbody>';
+                    lowStockAlerts.forEach(function(a) {
+                        html += '<tr class="low-stock">';
+                        html += '<td>' + escapeHtml(a.product_name) + '</td>';
+                        html += '<td>' + escapeHtml(a.category) + '</td>';
+                        html += '<td><span class="badge-danger">' + a.current_stock + '</span></td>';
+                        html += '<td>' + a.minimum_stock_threshold + '</td>';
+                        html += '<td>' + a.reorder_quantity + '</td>';
+                        if (userRole !== 'staff') {
+                            html += '<td><button class="btn-small" onclick="window.location.href=\'/adjustments\'">Create Adjustment</button></td>';
+                        }
+                        html += '</tr>';
+                    });
+                    html += '</tbody></table></div></div>';
+                }
+
+                // Expiry Soon section
+                if (expiryAlerts.length > 0) {
+                    html += '<div class="alert-section"><div class="table-container">';
+                    html += '<h3>📅 Expiry Soon Alerts (' + expiryAlerts.length + ')</h3>';
+                    html += '<table><thead><tr><th>Product</th><th>Expiry Date</th><th>Days Remaining</th><th>Current Stock</th></tr></thead><tbody>';
+                    expiryAlerts.forEach(function(a) {
+                        var daysClass = a.days_until_expiry <= 7 ? 'badge-danger' : 'badge-warning';
+                        html += '<tr>';
+                        html += '<td>' + escapeHtml(a.product_name) + '</td>';
+                        html += '<td>' + fmtDate(a.expiry_date) + '</td>';
+                        html += '<td><span class="' + daysClass + '">' + a.days_until_expiry + ' days</span></td>';
+                        html += '<td>' + a.current_stock + '</td>';
+                        html += '</tr>';
+                    });
+                    html += '</tbody></table></div></div>';
+                }
+            }
+
+            document.getElementById('alertsContent').innerHTML = html;
+        } catch (e) {
+            console.error(e);
+            document.getElementById('alertsContent').innerHTML = '<p style="color:red;text-align:center;padding:40px">Failed to load alerts.</p>';
+        }
+    }
+
+    // Load stock status on page load
+    loadStockStatus();
+</script>
+{% endblock %}

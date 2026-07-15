@@ -1,0 +1,257 @@
+{% extends "base.html" %}
+{% block title %}Stock Adjustments - IMS{% endblock %}
+{% block page_title %}Stock Adjustments{% endblock %}
+
+{% block content %}
+<div class="section-header">
+    <div class="filter-row" style="display:flex; gap:8px; align-items:center; flex-wrap:wrap;">
+        <select id="statusFilter" class="search-input" style="max-width:160px;">
+            <option value="">All Statuses</option>
+            <option value="pending">Pending</option>
+            <option value="approved">Approved</option>
+            <option value="rejected">Rejected</option>
+        </select>
+        <input type="date" id="dateFrom" class="search-input" style="max-width:150px;">
+        <input type="date" id="dateTo" class="search-input" style="max-width:150px;">
+        <button class="btn-primary" onclick="loadAdjustments()">🔍 Filter</button>
+        <button class="btn-primary" onclick="showCreateModal()" id="newAdjBtn">+ New Adjustment</button>
+    </div>
+</div>
+
+<div id="adjustmentsContent">
+    <div style="text-align:center; padding:40px;">Loading...</div>
+</div>
+
+<div id="createModal" class="modal-overlay" style="display:none;">
+    <div class="modal-content">
+        <h3>New Stock Adjustment</h3>
+        <form id="adjustmentForm" onsubmit="submitAdjustment(event)">
+            <div class="form-group">
+                <label>Product <span class="required">*</span></label>
+                <select id="adjProductId" class="form-input" required>
+                    <option value="">— Select Product —</option>
+                </select>
+            </div>
+            <div class="form-group">
+                <label>Adjustment Type <span class="required">*</span></label>
+                <select id="adjType" class="form-input" required>
+                    <option value="add">Add Stock</option>
+                    <option value="remove">Remove Stock</option>
+                </select>
+            </div>
+            <div class="form-group">
+                <label>Quantity <span class="required">*</span></label>
+                <input type="number" id="adjQuantity" class="form-input" min="1" required>
+            </div>
+            <div class="form-group">
+                <label>Reason <span class="required">*</span></label>
+                <select id="adjReason" class="form-input" required>
+                    <option value="">— Select Reason —</option>
+                    <option value="damaged">Damaged</option>
+                    <option value="expired">Expired</option>
+                    <option value="audit_correction">Audit Correction</option>
+                    <option value="opening_balance">Opening Balance</option>
+                    <option value="other">Other</option>
+                </select>
+            </div>
+            <div class="form-group">
+                <label>Notes</label>
+                <textarea id="adjNotes" class="form-input" rows="3" placeholder="Optional details..."></textarea>
+            </div>
+            <div id="adjMessage" class="message" style="display:none;"></div>
+            <div class="modal-actions">
+                <button type="button" class="btn-secondary" onclick="closeModal('createModal')">Cancel</button>
+                <button type="submit" class="btn-primary" id="adjSubmitBtn">Submit</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<style>
+    .status-badge {
+        display:inline-block; padding:3px 10px; border-radius:4px;
+        font-size:0.8rem; font-weight:600;
+    }
+    .status-badge.pending  { background:#fef3c7; color:#92400e; }
+    .status-badge.approved { background:#dcfce7; color:#16a34a; }
+    .status-badge.rejected { background:#fee2e2; color:#dc2626; }
+</style>
+
+<script>
+    var userRole = 'staff';
+
+    window.whenUserReady(function(role) {
+        userRole = role;
+        loadAdjustments();
+        loadProductDropdown();
+    });
+
+    async function loadProductDropdown() {
+        try {
+            var res = await fetch('/api/products');
+            var products = await res.json();
+            var sel = document.getElementById('adjProductId');
+            products.forEach(function(p) {
+                var opt = document.createElement('option');
+                opt.value = p.product_id;
+                opt.textContent = p.name + (p.sku ? ' (' + p.sku + ')' : '');
+                sel.appendChild(opt);
+            });
+        } catch(e) {
+            console.error('Failed to load products for dropdown', e);
+        }
+    }
+
+    async function loadAdjustments() {
+        var params = new URLSearchParams();
+        var status = document.getElementById('statusFilter').value;
+        var dateFrom = document.getElementById('dateFrom').value;
+        var dateTo = document.getElementById('dateTo').value;
+        if (status) params.set('status', status);
+        if (dateFrom) params.set('date_from', dateFrom);
+        if (dateTo) params.set('date_to', dateTo);
+
+        try {
+            document.getElementById('adjustmentsContent').innerHTML = '<div style="text-align:center;padding:40px;">Loading...</div>';
+            var res = await fetch('/api/adjustments?' + params.toString());
+            if (!res.ok) throw new Error('Failed to fetch');
+            var data = await res.json();
+            renderTable(data);
+        } catch(e) {
+            document.getElementById('adjustmentsContent').innerHTML = '<div style="text-align:center;padding:40px;color:#dc3545;">Failed to load adjustments</div>';
+            showToast('Failed to load adjustments', 'error');
+        }
+    }
+
+    function renderTable(adjustments) {
+        if (!adjustments.length) {
+            document.getElementById('adjustmentsContent').innerHTML = '<div style="text-align:center;padding:40px;background:white;border-radius:12px;">No adjustments found.</div>';
+            return;
+        }
+        var html = '<div class="table-container"><table><thead><tr>' +
+            '<th>ID</th><th>Product</th><th>Type</th><th>Qty</th><th>Reason</th><th>Status</th>' +
+            '<th>Requested By</th><th>Approved By</th><th>Created</th><th>Notes</th><th>Actions</th>' +
+            '</tr></thead><tbody>';
+        adjustments.forEach(function(a) {
+            var typeLabel = a.adjustment_type === 'add' ? '➕ Add' : '➖ Remove';
+            var statusClass = a.status;
+            var reasonLabel = a.reason_code.replace(/_/g, ' ').replace(/\b\w/g, function(c){return c.toUpperCase();});
+            var created = a.created_at ? a.created_at.slice(0, 10) : '-';
+            var notes = escapeHtml(a.notes || '');
+            var actions = '';
+            if (a.status === 'pending' && userRole === 'admin') {
+                actions = '<button class="btn-small" onclick="approveAdjustment('+a.adjustment_id+')">✅ Approve</button> ' +
+                          '<button class="btn-small btn-danger" onclick="rejectAdjustment('+a.adjustment_id+')">❌ Reject</button>';
+            } else if (a.status === 'approved') {
+                actions = '<span style="color:#16a34a;font-weight:600;">Applied</span>';
+            } else if (a.status === 'rejected') {
+                actions = '<span style="color:#dc2626;font-weight:600;">Rejected</span>';
+            } else {
+                actions = '<span style="color:#92400e;">Awaiting Admin</span>';
+            }
+            html += '<tr>' +
+                '<td>'+a.adjustment_id+'</td>' +
+                '<td>'+escapeHtml(a.product_name)+'</td>' +
+                '<td>'+typeLabel+'</td>' +
+                '<td>'+a.quantity+'</td>' +
+                '<td>'+reasonLabel+'</td>' +
+                '<td><span class="status-badge '+statusClass+'">'+a.status+'</span></td>' +
+                '<td>'+escapeHtml(a.requested_by_name || '-')+'</td>' +
+                '<td>'+escapeHtml(a.approved_by_name || '-')+'</td>' +
+                '<td>'+created+'</td>' +
+                '<td style="max-width:150px;overflow:hidden;text-overflow:ellipsis;">'+notes+'</td>' +
+                '<td style="white-space:nowrap;">'+actions+'</td>' +
+            '</tr>';
+        });
+        html += '</tbody></table></div>';
+        document.getElementById('adjustmentsContent').innerHTML = html;
+    }
+
+    function showCreateModal() {
+        document.getElementById('adjustmentForm').reset();
+        document.getElementById('adjMessage').style.display = 'none';
+        document.getElementById('adjMessage').className = 'message';
+        document.getElementById('adjSubmitBtn').disabled = false;
+        document.getElementById('adjSubmitBtn').textContent = 'Submit';
+        document.getElementById('createModal').style.display = 'flex';
+    }
+
+    function closeModal(id) {
+        document.getElementById(id).style.display = 'none';
+    }
+
+    window.onclick = function(e) {
+        if (e.target.classList.contains('modal-overlay')) {
+            e.target.style.display = 'none';
+        }
+    };
+
+    async function submitAdjustment(e) {
+        e.preventDefault();
+        var btn = document.getElementById('adjSubmitBtn');
+        btn.disabled = true;
+        btn.textContent = 'Submitting...';
+        var msgEl = document.getElementById('adjMessage');
+
+        var payload = {
+            product_id: parseInt(document.getElementById('adjProductId').value),
+            adjustment_type: document.getElementById('adjType').value,
+            quantity: parseInt(document.getElementById('adjQuantity').value),
+            reason_code: document.getElementById('adjReason').value,
+            notes: document.getElementById('adjNotes').value.trim()
+        };
+
+        try {
+            var res = await fetch('/api/adjustments', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify(payload)
+            });
+            var data = await res.json();
+            if (!res.ok) {
+                msgEl.textContent = data.error || 'Failed to create adjustment';
+                msgEl.className = 'message error';
+                msgEl.style.display = 'block';
+                btn.disabled = false;
+                btn.textContent = 'Submit';
+                return;
+            }
+            showToast(data.message, 'success');
+            closeModal('createModal');
+            loadAdjustments();
+        } catch(err) {
+            msgEl.textContent = 'Network error';
+            msgEl.className = 'message error';
+            msgEl.style.display = 'block';
+            btn.disabled = false;
+            btn.textContent = 'Submit';
+        }
+    }
+
+    async function approveAdjustment(id) {
+        if (!confirm('Approve adjustment #' + id + '? This will apply the stock change immediately.')) return;
+        try {
+            var res = await fetch('/api/adjustments/' + id + '/approve', { method: 'PUT' });
+            var data = await res.json();
+            if (!res.ok) { showToast(data.error, 'error'); return; }
+            showToast('Adjustment #' + id + ' approved and applied', 'success');
+            loadAdjustments();
+        } catch(e) {
+            showToast('Failed to approve', 'error');
+        }
+    }
+
+    async function rejectAdjustment(id) {
+        if (!confirm('Reject adjustment #' + id + '?')) return;
+        try {
+            var res = await fetch('/api/adjustments/' + id + '/reject', { method: 'PUT' });
+            var data = await res.json();
+            if (!res.ok) { showToast(data.error, 'error'); return; }
+            showToast('Adjustment #' + id + ' rejected', 'success');
+            loadAdjustments();
+        } catch(e) {
+            showToast('Failed to reject', 'error');
+        }
+    }
+</script>
+{% endblock %}

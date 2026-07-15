@@ -17,15 +17,28 @@
             <p>Inventory System</p>
         </div>
         <nav class="sidebar-nav">
-    <a href="/dashboard"        class="nav-item">📊 Dashboard</a>
-    <a href="/products"         class="nav-item">🗂️ Products</a>
-    <a href="/suppliers"        class="nav-item">🏭 Suppliers</a>
-    <a href="/sales"            class="nav-item">💰 Sales</a>
-    <a href="/billing"          class="nav-item">🧾 Billing (POS)</a>
-    <a href="/bill-history"     class="nav-item">📜 Bill History</a>
-    <a href="/pending-payments" class="nav-item">⏳ Pending Payments</a>
-    <a href="/daily-summary"    class="nav-item">📈 Daily Summary</a>
+    <a href="/dashboard"        class="nav-item" data-roles="admin,manager,staff">📊 Dashboard</a>
+    <a href="/products"         class="nav-item" data-roles="admin,manager,staff">🗂️ Products</a>
+    <a href="/categories"       class="nav-item" data-roles="admin,manager">🏷️ Categories</a>
+    <a href="/suppliers"        class="nav-item" data-roles="admin,manager">🏭 Suppliers</a>
+    <a href="/sales"            class="nav-item" data-roles="admin,manager,staff">💰 Sales</a>
+    <a href="/billing"          class="nav-item" data-roles="admin,manager,staff">🧾 Billing (POS)</a>
+    <a href="/bill-history"     class="nav-item" data-roles="admin,manager,staff">📜 Bill History</a>
+    <a href="/pending-payments" class="nav-item" data-roles="admin,manager">⏳ Pending Payments</a>
+    <a href="/reports"          class="nav-item" data-roles="admin,manager">📈 Reports</a>
+    <a href="/inventory"        class="nav-item" data-roles="admin,manager,staff">📦 Inventory <span id="inventoryAlertBadge" style="display:none;background:#dc2626;color:#fff;border-radius:10px;padding:0 7px;font-size:11px;margin-left:4px;line-height:1.6;"></span></a>
+    <a href="/adjustments"      class="nav-item" data-roles="admin,manager">⚖️ Adjustments</a>
+    <a href="/purchases"        class="nav-item" data-roles="admin,manager">📦 Purchase Orders</a>
+    <a href="/admin/users"      class="nav-item" data-roles="admin">👥 Users</a>
+    <a href="/settings"         class="nav-item" data-roles="admin">⚙️ Settings</a>
+    <a href="/notifications"    class="nav-item" data-roles="admin,manager">🔔 Notifications</a>
+    <a href="/activity-logs"    class="nav-item" data-roles="admin">📋 Activity Logs</a>
      </nav>
+    <div class="sidebar-user">
+        <div id="sidebarUserName">Loading...</div>
+        <div id="sidebarUserRole"></div>
+        <button onclick="handleLogout()">🚪 Logout</button>
+    </div>
     </aside>
 
     <!-- Main Content -->
@@ -35,18 +48,35 @@
         <div class="top-bar">
             <h1>{% block page_title %}Dashboard{% endblock %}</h1>
             <div class="user-info">
+                <div class="notification-area" style="position:relative;display:inline-flex;align-items:center;margin-right:16px;">
+                    <span id="notificationBell" style="cursor:pointer;font-size:20px;position:relative;" onclick="toggleNotificationDropdown(event)">🔔</span>
+                    <span id="notificationBadge" style="display:none;position:absolute;top:-4px;right:-8px;background:#dc2626;color:#fff;border-radius:50%;min-width:18px;height:18px;font-size:11px;line-height:18px;text-align:center;padding:0 4px;font-weight:700;"></span>
+                    <div id="notificationDropdown" style="display:none;position:absolute;top:100%;right:0;width:380px;max-height:480px;overflow-y:auto;background:#fff;border:1px solid #d1d5db;border-radius:8px;box-shadow:0 4px 16px rgba(0,0,0,0.15);z-index:1000;margin-top:8px;">
+                        <div style="padding:12px 16px;border-bottom:1px solid #e5e7eb;display:flex;justify-content:space-between;align-items:center;">
+                            <strong>Notifications</strong>
+                            <div>
+                                <a href="/notifications" style="font-size:12px;color:#2563eb;text-decoration:none;margin-right:12px;">View all</a>
+                                <button onclick="markAllRead()" style="background:none;border:none;color:#2563eb;cursor:pointer;font-size:12px;padding:0;">Mark all read</button>
+                            </div>
+                        </div>
+                        <div id="notificationList" style="padding:0;"></div>
+                    </div>
+                </div>
                 <span id="currentDate"></span>
             </div>
         </div>
 
         <!-- Page Content — only ONE block content here -->
         <div class="content-container {% block container_class %}{% endblock %}">
+            <script>window.whenUserReady=function(c){window.currentUserRole?c(window.currentUserRole):(window.__urc=window.__urc||[]).push(c)};</script>
             {% block content %}{% endblock %}
         </div>
 
     </main>
 
 </div>
+
+{% block overlays %}{% endblock %}
 
 <!-- Shared Modal -->
 <div id="modalOverlay" class="modal-overlay" style="display:none;">
@@ -63,10 +93,11 @@
     </div>
 </div>
 
-<!-- Toast -->
-<div id="toast" class="toast" style="display:none;"></div>
+<!-- Toast Container -->
+<div id="toastContainer" class="toast-container"></div>
 
 <script>
+    // PRINT_FIX_V2: diagnostic marker — confirms served HTML has latest code
     document.addEventListener('DOMContentLoaded', function () {
         // Set date
         const el = document.getElementById('currentDate');
@@ -88,13 +119,35 @@
         });
     });
 
-    function showToast(message, type) {
+    // Re-verify session on back/forward cache restore
+    window.addEventListener('pageshow', function(event) {
+        if (event.persisted) {
+            fetch('/api/auth/me').then(function(res) {
+                if (!res.ok) { window.location.href = '/login'; }
+            }).catch(function() {
+                window.location.href = '/login';
+            });
+        }
+    });
+
+    function showToast(message, type, duration) {
         type = type || 'success';
-        const toast = document.getElementById('toast');
-        toast.textContent = message;
-        toast.className = 'toast ' + type;
-        toast.style.display = 'block';
-        setTimeout(function() { toast.style.display = 'none'; }, 3000);
+        duration = duration || 3000;
+        var container = document.getElementById('toastContainer');
+        if (!container) return;
+        var item = document.createElement('div');
+        item.className = 'toast-item toast-' + type;
+        item.textContent = message;
+        item.title = 'Click to dismiss';
+        item.addEventListener('click', function() { dismissToast(item); });
+        container.appendChild(item);
+        setTimeout(function() { dismissToast(item); }, duration);
+    }
+
+    function dismissToast(el) {
+        if (!el || el.classList.contains('removing')) return;
+        el.classList.add('removing');
+        setTimeout(function() { if (el.parentNode) el.parentNode.removeChild(el); }, 260);
     }
 
     function openModal(title, formHTML, onSave) {
@@ -119,6 +172,85 @@
             .replace(/>/g, '&gt;')
             .replace(/"/g, '&quot;');
     }
+
+    function buildCompanyHeaderHtml(c) {
+        if (!c) c = {};
+        var html = '';
+        if (c.logo_path) {
+            var logoSrc = c.logo_path;
+            if (logoSrc.charAt(0) !== '/') logoSrc = '/' + logoSrc;
+            html += '<img src="' + escapeHtml(logoSrc) + '" ' +
+                'onerror="this.style.display=\'none\'" ' +
+                'style="max-height:50px;margin-bottom:8px;" alt="Logo"><br>';
+        }
+        html += '<div style="font-size:16px;font-weight:bold;margin-bottom:2px;">' +
+            escapeHtml(c.company_name || 'Inventory Management System') + '</div>';
+        if (c.address) {
+            html += '<div style="font-size:11px;color:#6b7280;margin-bottom:1px;">' +
+                escapeHtml(c.address) + '</div>';
+        }
+        if (c.phone) {
+            html += '<div style="font-size:11px;color:#6b7280;margin-bottom:1px;">' +
+                escapeHtml(c.phone) + '</div>';
+        }
+        if (c.gst_number) {
+            html += '<div style="font-size:11px;color:#6b7280;">GST: ' +
+                escapeHtml(c.gst_number) + '</div>';
+        }
+        return html;
+    }
+
+    function buildReceiptItemsHtml(items, format, fmtFn) {
+        if (format === 'thermal_80mm') {
+            var html = '';
+            items.forEach(function(item, i) {
+                html += '<div style="margin-bottom:4px;">' +
+                    '<div style="font-size:12px;">' + escapeHtml(item.product_name) + '</div>' +
+                    '<div style="display:flex;justify-content:space-between;font-size:11px;color:#6b7280;">' +
+                    '<span>' + item.quantity + ' x ' + fmtFn(item.unit_price) + '</span>' +
+                    '<span style="font-weight:500;color:#1e293b;">' + fmtFn(item.item_total) + '</span>' +
+                    '</div></div>';
+            });
+            return html;
+        }
+        var html = '<table style="width:100%;border-collapse:collapse;">' +
+            '<thead><tr style="background:#1e293b;color:#fff;">' +
+            '<th style="padding:6px 8px;text-align:left;">Item</th>' +
+            '<th style="padding:6px 8px;text-align:center;">Qty</th>' +
+            '<th style="padding:6px 8px;text-align:right;">Price</th>' +
+            '<th style="padding:6px 8px;text-align:right;">Total</th>' +
+            '</tr></thead><tbody>';
+        items.forEach(function(item, i) {
+            html += '<tr>' +
+                '<td style="padding:6px 8px;">' + (i+1) + '. ' + escapeHtml(item.product_name) + '</td>' +
+                '<td style="padding:6px 8px;text-align:center;">' + item.quantity + '</td>' +
+                '<td style="padding:6px 8px;text-align:right;">' + fmtFn(item.unit_price) + '</td>' +
+                '<td style="padding:6px 8px;text-align:right;font-weight:500;">' + fmtFn(item.item_total) + '</td>' +
+                '</tr>';
+        });
+        html += '</tbody></table>';
+        return html;
+    }
+
+    function applyPrintPageSize(format, contentHeightPx) {
+        var el = document.getElementById('dynamicPrintStyle');
+        if (el) el.remove();
+        var style = document.createElement('style');
+        style.id = 'dynamicPrintStyle';
+        if (format === 'thermal_80mm') {
+            var heightMm = 100;
+            if (contentHeightPx && contentHeightPx > 0) {
+                heightMm = Math.ceil(contentHeightPx * 25.4 / 96) + 10;
+            }
+            style.textContent = '@page { size: 80mm ' + heightMm + 'mm; margin: 2mm; }';
+            console.log('[PRINT_FIX_V3] thermal: 80mm x ' + heightMm + 'mm  (contentPx=' + contentHeightPx + ')');
+        } else {
+            style.textContent = '@page { size: A4; margin: 15mm; }';
+            console.log('[PRINT_FIX_V3] A4');
+        }
+        document.head.appendChild(style);
+    }
+
      // Safe date formatter — prevents timezone shift
     function fmtDate(dateStr) {
         if (!dateStr) return '—';
@@ -129,8 +261,233 @@
             year: 'numeric', month: 'short', day: 'numeric'
         });
     }
+// ── Auth: Cookie-based session ──────────────────────────────
+(function() {
+    var originalFetch = window.fetch;
+    window.fetch = function(url, options) {
+        options = options || {};
+        if (!options.credentials) options.credentials = 'include';
+        return originalFetch(url, options);
+    };
+})();
+
+(async function() {
+    var user;
+    try {
+        var res = await fetch('/api/auth/me');
+        if (!res.ok) throw new Error();
+        user = await res.json();
+    } catch(e) {
+        try {
+            await fetch('/api/auth/refresh', { method: 'POST' });
+            var res2 = await fetch('/api/auth/me');
+            if (!res2.ok) throw new Error();
+            user = await res2.json();
+        } catch(e2) {
+            window.location.href = '/login';
+            return;
+        }
+    }
+    window.currentUserRole = user.role || 'staff';
+    window.currentUserId   = user.user_id;
+    (window.__urc || []).forEach(function(cb) { cb(window.currentUserRole); });
+    window.__urc = [];
+    var nameEl = document.getElementById('sidebarUserName');
+    var roleEl = document.getElementById('sidebarUserRole');
+    if (nameEl) nameEl.textContent = user.name || 'User';
+    if (roleEl) roleEl.textContent = (user.role || 'staff').charAt(0).toUpperCase() + (user.role || 'staff').slice(1);
+    // Hide nav items not allowed for this role
+    document.querySelectorAll('.nav-item[data-roles]').forEach(function(el) {
+        var allowed = el.getAttribute('data-roles').split(',');
+        if (allowed.indexOf(window.currentUserRole) === -1) {
+            el.style.display = 'none';
+        }
+    });
+
+    // Alert badge polling for Inventory sidebar link
+    (function pollAlerts() {
+        var badge = document.getElementById('inventoryAlertBadge');
+        if (!badge) return;
+        fetch('/api/inventory/alerts').then(function(r){ return r.json(); }).then(function(alerts){
+            if (alerts.length > 0) {
+                badge.textContent = alerts.length;
+                badge.style.display = 'inline';
+            } else {
+                badge.style.display = 'none';
+            }
+        }).catch(function(){});
+        setTimeout(pollAlerts, 60000);
+    })();
+
+    // ── Notification bell: SSE real-time + fallback sync ──────
+    window.__lastSeenNotifId = null;
+    (function initNotificationSSE() {
+        var badge = document.getElementById('notificationBadge');
+        if (!badge) return;
+
+        function updateBadge(count) {
+            if (count > 0) {
+                badge.textContent = count > 99 ? '99+' : count;
+                badge.style.display = 'inline';
+            } else {
+                badge.style.display = 'none';
+            }
+        }
+
+        function showNotifToast(notif) {
+            var txt = notif.title || 'Notification';
+            if (notif.message && notif.message !== notif.title) txt += ': ' + notif.message;
+            showToast('\uD83D\uDD14 ' + txt, notifToastType(notif.notification_type), 5000);
+        }
+
+        // Seed __lastSeenNotifId so the EventSource can catch up from it
+        fetch('/api/notifications?limit=1').then(function(r){ return r.json(); }).then(function(nd){
+            var notifs = nd.notifications || nd || [];
+            if (notifs.length > 0) {
+                window.__lastSeenNotifId = notifs[0].notification_id || notifs[0].id;
+            }
+            openStream();
+        }).catch(function(){ openStream(); });
+
+        function openStream() {
+            var url = '/api/notifications/stream';
+            if (window.__lastSeenNotifId) url += '?last_id=' + window.__lastSeenNotifId;
+            var es = new EventSource(url);
+            es.onmessage = function(e) {
+                try {
+                    var notif = JSON.parse(e.data);
+                    var nid = notif.notification_id || notif.id;
+                    // Skip catch-up events we've already seen
+                    if (window.__lastSeenNotifId !== null && nid <= window.__lastSeenNotifId) return;
+                    window.__lastSeenNotifId = nid;
+                    showNotifToast(notif);
+                    // Update badge to server-reported unread count
+                    var curr = parseInt(badge.textContent || '0', 10);
+                    updateBadge(curr + 1);
+                } catch(err) {}
+            };
+            es.onerror = function() {
+                // EventSource auto-reconnects; sync badge in background
+            };
+            window.__notifSSE = es;
+        }
+
+        // Fallback: sync unread badge every 5 minutes (silent, no toasts)
+        setInterval(function() {
+            fetch('/api/notifications/unread-count').then(function(r){ return r.json(); }).then(function(data){
+                updateBadge(data.unread_count || 0);
+            }).catch(function(){});
+        }, 300000);
+
+        // Seed badge on load
+        fetch('/api/notifications/unread-count').then(function(r){ return r.json(); }).then(function(data){
+            updateBadge(data.unread_count || 0);
+        }).catch(function(){});
+    })();
+
+    function notifToastType(type) {
+        if (!type) return 'info';
+        if (type === 'low_stock' || type === 'out_of_stock' || type === 'expiry_soon' || type === 'pending_adjustment' || type === 'pending_payment') return 'warning';
+        if (type === 'po_cancelled' || type === 'adjustment_rejected' || type === 'product_deleted' || type === 'supplier_deleted' || type === 'user_deleted') return 'error';
+        if (type === 'sale_completed' || type === 'po_received' || type === 'adjustment_approved' || type === 'payment_received') return 'success';
+        return 'info';
+    }
+})();
+
+async function handleLogout() {
+    try {
+        await fetch('/api/auth/logout', { method: 'POST' });
+    } catch(e) {}
+    window.location.replace('/login');
+}
+
+// ── Notification dropdown ─────────────────────────────────
+function toggleNotificationDropdown(event) {
+    event.stopPropagation();
+    var dd = document.getElementById('notificationDropdown');
+    if (dd.style.display === 'block') {
+        dd.style.display = 'none';
+        return;
+    }
+    dd.style.display = 'block';
+    loadNotifications();
+}
+
+function closeNotificationDropdown() {
+    document.getElementById('notificationDropdown').style.display = 'none';
+}
+
+function loadNotifications() {
+    var list = document.getElementById('notificationList');
+    list.innerHTML = '<div style="padding:16px;text-align:center;color:#6b7280;font-size:13px;">Loading...</div>';
+    fetch('/api/notifications?limit=10').then(function(r){ return r.json(); }).then(function(data){
+        var notifs = data.notifications || data || [];
+        if (!notifs.length) {
+            list.innerHTML = '<div style="padding:16px;text-align:center;color:#6b7280;font-size:13px;">No notifications</div>';
+            return;
+        }
+        list.innerHTML = notifs.slice(0, 10).map(function(n){
+            var isUnread = n.is_read === 0 || n.is_read === false;
+            var timeAgo = timeSince(n.created_at);
+            return '<div class="notif-item" data-id="' + n.notification_id + '" style="padding:12px 16px;border-bottom:1px solid #f3f4f6;cursor:pointer;' + (isUnread ? 'border-left:3px solid #2563eb;background:#f0f7ff;' : '') + '" onclick="markOneRead(' + n.notification_id + ')">' +
+                '<div style="font-size:13px;font-weight:' + (isUnread ? '600' : '400') + ';">' + escapeHtml(n.title) + '</div>' +
+                '<div style="font-size:12px;color:#6b7280;margin-top:2px;">' + escapeHtml(n.message) + '</div>' +
+                '<div style="font-size:11px;color:#9ca3af;margin-top:4px;">' + timeAgo + ' · ' + escapeHtml(n.notification_type) + '</div>' +
+                '</div>';
+        }).join('');
+    }).catch(function(){
+        document.getElementById('notificationList').innerHTML = '<div style="padding:16px;text-align:center;color:#dc2626;font-size:13px;">Failed to load</div>';
+    });
+}
+
+function markOneRead(id) {
+    var badge = document.getElementById('notificationBadge');
+    fetch('/api/notifications/' + id + '/read', { method: 'PUT' }).then(function(){
+        // Update badge count
+        var curr = parseInt(badge.textContent || '0', 10);
+        if (curr > 1) {
+            badge.textContent = curr - 1;
+        } else {
+            badge.style.display = 'none';
+        }
+        // Reload dropdown
+        loadNotifications();
+    }).catch(function(){});
+}
+
+function markAllRead() {
+    var badge = document.getElementById('notificationBadge');
+    fetch('/api/notifications/read-all', { method: 'PUT' }).then(function(){
+        badge.style.display = 'none';
+        loadNotifications();
+    }).catch(function(){});
+}
+
+function timeSince(dateStr) {
+    if (!dateStr) return '';
+    var parts = dateStr.substring(0, 19).split(/[T -]/);
+    var d = new Date(parts[0], parts[1]-1, parts[2], parts[3]||0, parts[4]||0, parts[5]||0);
+    var seconds = Math.floor((new Date() - d) / 1000);
+    if (seconds < 60) return 'just now';
+    var minutes = Math.floor(seconds / 60);
+    if (minutes < 60) return minutes + 'm ago';
+    var hours = Math.floor(minutes / 60);
+    if (hours < 24) return hours + 'h ago';
+    var days = Math.floor(hours / 24);
+    if (days < 30) return days + 'd ago';
+    return dateStr.substring(0, 10);
+}
+
+// Close dropdown on outside click
+document.addEventListener('click', function(e) {
+    var dd = document.getElementById('notificationDropdown');
+    if (dd && dd.style.display === 'block' && !e.target.closest('.notification-area')) {
+        dd.style.display = 'none';
+    }
+});
 </script>
 
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.7/dist/chart.umd.min.js"></script>
 {% block scripts %}{% endblock %}
 </body>
 </html>

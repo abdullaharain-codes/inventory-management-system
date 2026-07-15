@@ -31,38 +31,6 @@
     <div class="loading-msg">Loading bills...</div>
 </div>
 
-<!-- Bill Detail Modal -->
-<div id="detailOverlay" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.5);z-index:2000;align-items:center;justify-content:center;">
-    <div style="background:#fff;border-radius:12px;width:640px;max-width:96%;max-height:92vh;display:flex;flex-direction:column;overflow:hidden;">
-        <div style="padding:14px 18px;border-bottom:1px solid #e5e7eb;display:flex;justify-content:space-between;align-items:center;flex-shrink:0;">
-            <h3 id="detailTitle" style="font-size:15px;font-weight:600;margin:0;"></h3>
-            <div style="display:flex;gap:8px;align-items:center;">
-                <button onclick="printDetail()" style="padding:6px 14px;background:#1e293b;color:#fff;border:none;border-radius:6px;font-size:12px;cursor:pointer;">🖨️ Print</button>
-                <button onclick="closeDetail()" style="background:none;border:none;font-size:20px;cursor:pointer;color:#6b7280;">&times;</button>
-            </div>
-        </div>
-        <div style="display:flex;border-bottom:1px solid #e5e7eb;flex-shrink:0;">
-            <button class="detail-tab active" data-tab="items"          onclick="switchTab('items')">📋 Items</button>
-            <button class="detail-tab"        data-tab="edit"           onclick="switchTab('edit')">✏️ Edit Bill</button>
-            <button class="detail-tab"        data-tab="refund"         onclick="switchTab('refund')">↩️ Refund</button>
-            <button class="detail-tab"        data-tab="refund-history" onclick="switchTab('refund-history')">📄 Refund History</button>
-        </div>
-        <div id="detailBody" style="flex:1;overflow-y:auto;padding:18px;"></div>
-    </div>
-</div>
-
-<!-- Refund Confirm Modal -->
-<div id="refundConfirmOverlay" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.6);z-index:3000;align-items:center;justify-content:center;">
-    <div style="background:#fff;border-radius:10px;width:420px;padding:24px;">
-        <h3 style="font-size:15px;font-weight:600;margin-bottom:16px;">Confirm Refund</h3>
-        <div id="refundConfirmBody"></div>
-        <div style="display:flex;justify-content:flex-end;gap:8px;margin-top:20px;">
-            <button onclick="closeRefundConfirm()" style="padding:8px 16px;border:1px solid #e5e7eb;border-radius:6px;background:#fff;cursor:pointer;font-size:13px;">Cancel</button>
-            <button id="refundConfirmBtn" style="padding:8px 16px;background:#dc2626;color:#fff;border:none;border-radius:6px;cursor:pointer;font-size:13px;">Process Refund</button>
-        </div>
-    </div>
-</div>
-
 <style>
     .detail-tab { padding:10px 18px;border:none;background:none;font-size:13px;cursor:pointer;color:#6b7280;border-bottom:2px solid transparent;transition:all 0.15s; }
     .detail-tab:hover  { color:#111827; }
@@ -71,14 +39,16 @@
     .refund-row:last-child { border-bottom:none; }
     @media print {
         body > *:not(#detailOverlay) { display:none !important; }
-        #detailOverlay { position:static !important;background:white !important;display:block !important; }
+        body > #detailOverlay { position:static !important;background:white !important;display:block !important; }
         #detailOverlay > div { box-shadow:none !important;max-height:none !important;width:100% !important; }
-        .detail-tab, #detailOverlay > div > div:first-child, #detailOverlay > div > div:nth-child(2) { display:none !important; }
+        #detailOverlay > div.receipt-thermal { max-width:76mm !important;width:76mm !important;margin:0 auto !important; }
+        .detail-header-bar, .detail-tabs-bar, .detail-tab { display:none !important; }
     }
 </style>
 
 <script>
     var allBills = [], currentBill = null;
+    var userRole = 'staff';
 
     function fmt(n) { return '₨' + parseFloat(n || 0).toLocaleString('en-PK', { minimumFractionDigits: 2 }); }
 
@@ -129,7 +99,8 @@
                 '<td>' + statusBadge + '</td>' +
                 '<td>' +
                 '<button class="btn-small" style="background:#eff6ff;color:#1d4ed8;border:1px solid #bfdbfe;" onclick="openDetail(' + b.bill_id + ')">👁 View</button>' +
-                '<button class="btn-small btn-danger" onclick="deleteBill(' + b.bill_id + ',\'' + escapeHtml(b.bill_number) + '\')" style="margin-left:4px;">🗑</button>' +
+                '<button class="btn-small" style="background:#f0fdf4;color:#166534;border:1px solid #bbf7d0;margin-left:4px;" onclick="window.open(\'/api/bills/' + b.bill_id + '/invoice-pdf\', \'_blank\')">📄 PDF</button>' +
+                (userRole === 'admin' ? '<button class="btn-small btn-danger" onclick="deleteBill(' + b.bill_id + ',\'' + escapeHtml(b.bill_number) + '\')" style="margin-left:4px;">🗑</button>' : '') +
                 '</td></tr>';
         }).join('');
         document.getElementById('billsTableContainer').innerHTML =
@@ -170,52 +141,58 @@
             currentBill = await fetch('/api/bills/' + billId).then(r => r.json());
             document.getElementById('detailTitle').textContent = 'Bill: ' + currentBill.bill_number;
             document.getElementById('detailOverlay').style.display = 'flex';
-            switchTab('items');
+            // Hide admin-only tabs for non-admin
+            var isAdmin = userRole === 'admin';
+            document.getElementById('editBillTab').style.display = isAdmin ? '' : 'none';
+            document.getElementById('refundBillTab').style.display = isAdmin ? '' : 'none';
+            await switchTab('items');
         } catch(e) { showToast('Failed to load bill details', 'error'); }
     }
 
     function closeDetail() { document.getElementById('detailOverlay').style.display = 'none'; currentBill = null; }
 
-    function switchTab(tab) {
+    async function switchTab(tab) {
         document.querySelectorAll('.detail-tab').forEach(function(btn){
             btn.classList.toggle('active', btn.getAttribute('data-tab') === tab);
         });
         var body = document.getElementById('detailBody');
-        if      (tab === 'items')          renderItemsTab(body);
+        if      (tab === 'items')          await renderItemsTab(body);
         else if (tab === 'edit')           renderEditTab(body);
         else if (tab === 'refund')         renderRefundTab(body);
-        else if (tab === 'refund-history') renderRefundHistoryTab(body);
+        else if (tab === 'refund-history') await renderRefundHistoryTab(body);
     }
 
-    function renderItemsTab(body) {
+    async function renderItemsTab(body) {
         if (!currentBill) return;
         var b = currentBill;
         var mb = { cash:'💵 Cash', card:'💳 Card', online:'📱 Online', credit:'📋 Credit' };
+        var company = {};
+        try {
+            company = await fetch('/api/company-info').then(function(r){ return r.json(); });
+            window.__lastCompanyInfo = company;
+        } catch(e) {
+            console.warn('company-info fetch failed, using cached/default — invoice format setting will not be honored');
+            company = window.__lastCompanyInfo || {};
+        }
+        var invoiceFmt = company.invoice_format || 'a4';
+        var card = document.querySelector('#detailOverlay > div');
+        if (card) card.classList.toggle('receipt-thermal', invoiceFmt === 'thermal_80mm');
         var statusBadge = b.payment_status === 'pending'
             ? '<span style="background:#fef3c7;color:#92400e;padding:2px 8px;border-radius:4px;font-size:11px;">⏳ Pending</span>'
             : '<span style="background:#d1fae5;color:#065f46;padding:2px 8px;border-radius:4px;font-size:11px;">✅ Paid</span>';
-        var itemRows = (b.items||[]).map(function(item, i){
-            return '<tr>' +
-                '<td style="padding:9px 12px;">' + (i+1) + '</td>' +
-                '<td style="padding:9px 12px;">' + escapeHtml(item.product_name) + '</td>' +
-                '<td style="padding:9px 12px;text-align:center;">' + item.quantity + '</td>' +
-                '<td style="padding:9px 12px;text-align:right;">' + fmt(item.unit_price) + '</td>' +
-                '<td style="padding:9px 12px;text-align:right;font-weight:600;">' + fmt(item.item_total) + '</td></tr>';
-        }).join('');
         /* FIX: grand_total from DB already includes GST */
         var discRow = parseFloat(b.discount_percent) > 0
             ? '<div style="display:flex;justify-content:space-between;font-size:13px;margin-bottom:5px;color:#dc2626;"><span>Discount (' + b.discount_percent + '%)</span><span>-' + fmt(b.discount_amount) + '</span></div>' : '';
         var gstRow  = parseFloat(b.gst_percent) > 0
             ? '<div style="display:flex;justify-content:space-between;font-size:13px;margin-bottom:5px;color:#059669;"><span>GST (' + b.gst_percent + '%)</span><span>+' + fmt(b.gst_amount) + '</span></div>' : '';
         body.innerHTML = '<div id="printArea">' +
+            '<div style="text-align:center;margin-bottom:14px;">' + buildCompanyHeaderHtml(company) + '</div>' +
             '<div style="display:flex;justify-content:space-between;margin-bottom:16px;padding-bottom:14px;border-bottom:1px solid #e5e7eb;">' +
             '<div><div style="font-size:18px;font-weight:700;">' + escapeHtml(b.bill_number) + '</div>' +
             '<div style="font-size:13px;color:#6b7280;margin-top:3px;">Date: ' + fmtDate(b.bill_date) + '</div>' +
             (b.customer_name ? '<div style="font-size:13px;color:#374151;margin-top:3px;">Customer: <strong>' + escapeHtml(b.customer_name) + '</strong>' + (b.customer_phone ? ' — ' + escapeHtml(b.customer_phone) : '') + '</div>' : '') +
             '</div><div style="text-align:right;"><div style="margin-bottom:6px;">' + (mb[b.payment_method]||b.payment_method) + '</div>' + statusBadge + '</div></div>' +
-            '<table style="width:100%;border-collapse:collapse;margin-bottom:16px;">' +
-            '<thead><tr style="background:#1e293b;color:#fff;"><th style="padding:9px 12px;text-align:left;">#</th><th style="padding:9px 12px;text-align:left;">Product</th><th style="padding:9px 12px;text-align:center;">Qty</th><th style="padding:9px 12px;text-align:right;">Unit Price</th><th style="padding:9px 12px;text-align:right;">Total</th></tr></thead>' +
-            '<tbody>' + itemRows + '</tbody></table>' +
+            '<div style="margin-bottom:16px;">' + buildReceiptItemsHtml(b.items || [], invoiceFmt, fmt) + '</div>' +
             '<div style="border-top:2px solid #e5e7eb;padding-top:12px;max-width:280px;margin-left:auto;">' +
             '<div style="display:flex;justify-content:space-between;font-size:13px;margin-bottom:5px;"><span style="color:#6b7280;">Subtotal</span><span>' + fmt(b.subtotal) + '</span></div>' +
             discRow + gstRow +
@@ -223,6 +200,16 @@
             '</div>' +
             (b.notes ? '<div style="margin-top:14px;padding:10px;background:#f9fafb;border-radius:8px;font-size:13px;color:#374151;"><strong>Notes:</strong> ' + escapeHtml(b.notes) + '</div>' : '') +
             '</div>';
+        var measured = 0;
+        if (invoiceFmt === 'thermal_80mm' && card) {
+            var origW = card.style.width;
+            card.style.width = '76mm';
+            void card.offsetHeight;
+            var printArea = document.getElementById('printArea');
+            if (printArea) measured = printArea.scrollHeight;
+            card.style.width = origW;
+        }
+        applyPrintPageSize(invoiceFmt, measured);
     }
 
     function renderEditTab(body) {
@@ -323,7 +310,7 @@
                 if (!res.ok) throw new Error(result.error||'Failed');
                 showToast('Refund processed. Stock restored.','success');
                 currentBill = await fetch('/api/bills/' + currentBill.bill_id).then(r=>r.json());
-                switchTab('refund-history'); loadBills();
+                await switchTab('refund-history'); loadBills();
             } catch(e) { showToast(e.message,'error'); }
         };
     }
@@ -349,7 +336,11 @@
         } catch(e) { body.innerHTML = '<p style="color:#dc2626;text-align:center;">Failed to load refunds.</p>'; }
     }
 
-    function printDetail() { switchTab('items'); setTimeout(function(){ window.print(); }, 150); }
+    async function printDetail() { await switchTab('items'); window.print(); }
+
+    function downloadBillPdf() {
+        if (currentBill) window.open('/api/bills/' + currentBill.bill_id + '/invoice-pdf', '_blank');
+    }
 
     async function deleteBill(billId, billNumber) {
         if (!confirm('Delete ' + billNumber + '? Stock will be restored.')) return;
@@ -361,8 +352,46 @@
     }
 
     document.addEventListener('DOMContentLoaded', function(){
-        loadBills();
+        whenUserReady(function(role) {
+            userRole = role;
+            loadBills();
+        });
         document.getElementById('searchBill').addEventListener('keyup', function(e){ if (e.key==='Enter') applyFilters(); });
     });
 </script>
+{% endblock %}
+
+{% block overlays %}
+<!-- Bill Detail Modal -->
+<div id="detailOverlay" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.5);z-index:2000;align-items:center;justify-content:center;">
+    <div style="background:#fff;border-radius:12px;width:640px;max-width:96%;max-height:92vh;display:flex;flex-direction:column;overflow:hidden;">
+        <div class="detail-header-bar" style="padding:14px 18px;border-bottom:1px solid #e5e7eb;display:flex;justify-content:space-between;align-items:center;flex-shrink:0;">
+            <h3 id="detailTitle" style="font-size:15px;font-weight:600;margin:0;"></h3>
+            <div style="display:flex;gap:8px;align-items:center;">
+                <button onclick="downloadBillPdf()" style="padding:6px 14px;background:#1e293b;color:#fff;border:none;border-radius:6px;font-size:12px;cursor:pointer;">📄 Download PDF</button>
+                <button onclick="printDetail()" style="padding:6px 14px;background:#1e293b;color:#fff;border:none;border-radius:6px;font-size:12px;cursor:pointer;">🖨️ Print</button>
+                <button onclick="closeDetail()" style="background:none;border:none;font-size:20px;cursor:pointer;color:#6b7280;">&times;</button>
+            </div>
+        </div>
+        <div class="detail-tabs-bar" style="display:flex;border-bottom:1px solid #e5e7eb;flex-shrink:0;">
+            <button class="detail-tab active" data-tab="items"          onclick="switchTab('items')">📋 Items</button>
+            <button class="detail-tab"        data-tab="edit"           onclick="switchTab('edit')"   id="editBillTab">✏️ Edit Bill</button>
+            <button class="detail-tab"        data-tab="refund"         onclick="switchTab('refund')" id="refundBillTab">↩️ Refund</button>
+            <button class="detail-tab"        data-tab="refund-history" onclick="switchTab('refund-history')">📄 Refund History</button>
+        </div>
+        <div id="detailBody" style="flex:1;overflow-y:auto;padding:18px;"></div>
+    </div>
+</div>
+
+<!-- Refund Confirm Modal -->
+<div id="refundConfirmOverlay" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.6);z-index:3000;align-items:center;justify-content:center;">
+    <div style="background:#fff;border-radius:10px;width:420px;padding:24px;">
+        <h3 style="font-size:15px;font-weight:600;margin-bottom:16px;">Confirm Refund</h3>
+        <div id="refundConfirmBody"></div>
+        <div style="display:flex;justify-content:flex-end;gap:8px;margin-top:20px;">
+            <button onclick="closeRefundConfirm()" style="padding:8px 16px;border:1px solid #e5e7eb;border-radius:6px;background:#fff;cursor:pointer;font-size:13px;">Cancel</button>
+            <button id="refundConfirmBtn" style="padding:8px 16px;background:#dc2626;color:#fff;border:none;border-radius:6px;cursor:pointer;font-size:13px;">Process Refund</button>
+        </div>
+    </div>
+</div>
 {% endblock %}

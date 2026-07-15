@@ -1,0 +1,182 @@
+{% extends "base.html" %}
+
+{% block title %}Notifications - Inventory System{% endblock %}
+{% block page_title %}Notifications{% endblock %}
+
+{% block content %}
+<div class="section-header">
+    <div class="filter-bar">
+        <select id="filterType">
+            <option value="">All Types</option>
+            <option value="low_stock">Low Stock</option>
+            <option value="out_of_stock">Out of Stock</option>
+            <option value="expiry_soon">Expiry Soon</option>
+            <option value="product_added">Product Added</option>
+            <option value="product_updated">Product Updated</option>
+            <option value="product_deleted">Product Deleted</option>
+            <option value="supplier_added">Supplier Added</option>
+            <option value="supplier_updated">Supplier Updated</option>
+            <option value="supplier_deleted">Supplier Deleted</option>
+            <option value="pending_adjustment">Pending Adjustment</option>
+            <option value="adjustment_approved">Adjustment Approved</option>
+            <option value="adjustment_rejected">Adjustment Rejected</option>
+            <option value="new_po">New PO</option>
+            <option value="po_approved">PO Approved</option>
+            <option value="po_received">PO Received</option>
+            <option value="po_cancelled">PO Cancelled</option>
+            <option value="sale_completed">Sale Completed</option>
+            <option value="order_created">Order Created</option>
+            <option value="pending_payment">Pending Payment</option>
+            <option value="payment_received">Payment Received</option>
+            <option value="user_created">User Created</option>
+            <option value="user_updated">User Updated</option>
+            <option value="user_deleted">User Deleted</option>
+            <option value="staff_login">Staff Login</option>
+            <option value="general">General</option>
+        </select>
+        <input type="date" id="filterDateFrom">
+        <input type="date" id="filterDateTo">
+        <button class="btn-primary" onclick="loadNotifications(1)">🔍 Filter</button>
+        <button class="btn-secondary" onclick="window.location.reload()">🔄 Reset</button>
+    </div>
+    <div>
+        <button class="btn-primary" onclick="checkLowStock()" style="background:#2563eb;">📦 Check Low Stock & Notify</button>
+        <button class="btn-secondary" onclick="markAllRead()">✓ Mark All Read</button>
+    </div>
+</div>
+
+<div id="notifContent">
+    <div style="text-align:center;padding:40px;">Loading notifications...</div>
+</div>
+
+<div id="pagination" style="display:none;text-align:center;margin-top:20px;"></div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+    var currentPage = 1;
+
+    async function loadNotifications(page) {
+        currentPage = page || 1;
+        var type = document.getElementById('filterType').value;
+        var dateFrom = document.getElementById('filterDateFrom').value;
+        var dateTo = document.getElementById('filterDateTo').value;
+
+        var params = new URLSearchParams();
+        params.set('page', currentPage);
+        if (type) params.set('type', type);
+        if (dateFrom) params.set('date_from', dateFrom);
+        if (dateTo) params.set('date_to', dateTo);
+
+        document.getElementById('notifContent').innerHTML = '<div style="text-align:center;padding:40px;">Loading...</div>';
+
+        try {
+            var r = await fetch('/api/notifications?' + params.toString());
+            var data = await r.json();
+            renderNotifs(data);
+        } catch(e) {
+            document.getElementById('notifContent').innerHTML = '<div style="text-align:center;padding:40px;color:#dc2626;">Failed to load</div>';
+        }
+    }
+
+    function renderNotifs(data) {
+        var notifs = data.notifications || data || [];
+        var total = data.total || notifs.length;
+        var page = data.page || 1;
+        var limit = data.limit || 50;
+        var totalPages = data.total_pages || Math.ceil(total / limit);
+
+        if (!notifs.length) {
+            document.getElementById('notifContent').innerHTML = '<div class="table-container"><p class="empty-msg" style="text-align:center;padding:40px;">No notifications found.</p></div>';
+            document.getElementById('pagination').style.display = 'none';
+            return;
+        }
+
+        var html = '<div class="table-container"><table><thead><tr><th>Status</th><th>Type</th><th>Title</th><th>Message</th><th>Created</th><th>Action</th></tr></thead><tbody>';
+        notifs.forEach(function(n) {
+            var isUnread = n.is_read === 0 || n.is_read === false;
+            var ts = n.created_at ? timeSince(n.created_at) : '—';
+            var typeLabel = n.notification_type ? n.notification_type.replace(/_/g, ' ') : '—';
+            html += '<tr class="' + (isUnread ? 'unread-row' : '') + '" style="' + (isUnread ? 'border-left:3px solid #2563eb;background:#f0f7ff;' : '') + '">' +
+                '<td>' + (isUnread ? '<span class="badge-notif-unread" style="background:#2563eb;color:#fff;padding:2px 8px;border-radius:10px;font-size:11px;">New</span>' : '<span style="color:#9ca3af;font-size:12px;">Read</span>') + '</td>' +
+                '<td><span class="badge-type" style="background:#e5e7eb;padding:2px 8px;border-radius:10px;font-size:11px;">' + escapeHtml(typeLabel) + '</span></td>' +
+                '<td><strong>' + escapeHtml(n.title || '') + '</strong></td>' +
+                '<td>' + escapeHtml(n.message || '') + '</td>' +
+                '<td style="white-space:nowrap;font-size:12px;color:#6b7280;">' + ts + '</td>' +
+                '<td>' +
+                    (isUnread ? '<button class="btn-small" onclick="markRead(' + n.notification_id + ')">✓ Read</button>' : '<span style="color:#9ca3af;font-size:12px;">—</span>') +
+                '</td>' +
+                '</tr>';
+        });
+        html += '</tbody></table></div>';
+        document.getElementById('notifContent').innerHTML = html;
+
+        // Pagination
+        if (totalPages > 1) {
+            var pagHtml = '';
+            if (page > 1) pagHtml += '<button class="btn-small" onclick="loadNotifications(' + (page - 1) + ')">← Prev</button> ';
+            pagHtml += '<span style="margin:0 12px;">Page ' + page + ' of ' + totalPages + ' (' + total + ' total)</span>';
+            if (page < totalPages) pagHtml += '<button class="btn-small" onclick="loadNotifications(' + (page + 1) + ')">Next →</button>';
+            document.getElementById('pagination').innerHTML = pagHtml;
+            document.getElementById('pagination').style.display = 'block';
+        } else {
+            document.getElementById('pagination').innerHTML = '<span>' + total + ' notification(s)</span>';
+            document.getElementById('pagination').style.display = 'block';
+        }
+    }
+
+    function markRead(id) {
+        fetch('/api/notifications/' + id + '/read', { method: 'PUT' }).then(function(){
+            loadNotifications(currentPage);
+        }).catch(function(){});
+    }
+
+    function markAllRead() {
+        fetch('/api/notifications/read-all', { method: 'PUT' }).then(function(){
+            loadNotifications(currentPage);
+        }).catch(function(){});
+    }
+
+    async function checkLowStock() {
+        var btn = event && event.target ? event.target : document.querySelector('.section-header .btn-primary');
+        btn.textContent = '⏳ Checking...';
+        btn.disabled = true;
+        try {
+            var r = await fetch('/api/notifications/check-low-stock', { method: 'POST' });
+            var data = await r.json();
+            showToast(data.message || 'Done', 'success');
+            loadNotifications(currentPage);
+        } catch(e) {
+            showToast('Failed: ' + e.message, 'error');
+        }
+        btn.textContent = '📦 Check Low Stock & Notify';
+        btn.disabled = false;
+    }
+
+    function timeSince(dateStr) {
+        if (!dateStr) return '';
+        var parts = dateStr.substring(0, 19).split(/[T -]/);
+        var d = new Date(parts[0], parts[1]-1, parts[2], parts[3]||0, parts[4]||0, parts[5]||0);
+        var seconds = Math.floor((new Date() - d) / 1000);
+        if (seconds < 60) return 'just now';
+        var minutes = Math.floor(seconds / 60);
+        if (minutes < 60) return minutes + 'm ago';
+        var hours = Math.floor(minutes / 60);
+        if (hours < 24) return hours + 'h ago';
+        var days = Math.floor(hours / 24);
+        if (days < 30) return days + 'd ago';
+        return dateStr.substring(0, 10);
+    }
+
+    whenUserReady(function(role) {
+        loadNotifications(1);
+    });
+</script>
+
+<style>
+    .section-header { display:flex;justify-content:space-between;align-items:center;margin-bottom:20px;flex-wrap:wrap;gap:10px; }
+    .filter-bar { display:flex;gap:8px;align-items:center;flex-wrap:wrap; }
+    .filter-bar input,.filter-bar select { padding:8px 12px;border:1px solid #ddd;border-radius:6px;font-size:14px; }
+</style>
+{% endblock %}
+

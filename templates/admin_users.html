@@ -1,0 +1,277 @@
+{% extends "base.html" %}
+
+{% block title %}Users Management - Inventory System{% endblock %}
+{% block page_title %}Users Management{% endblock %}
+
+{% block content %}
+<div class="section-header">
+    <button class="btn-primary" onclick="showAddUserModal()">+ Add User</button>
+</div>
+
+<div id="usersContent">
+    <div style="text-align: center; padding: 40px;">Loading users...</div>
+</div>
+
+<script>
+    var userRole = 'admin';
+
+    async function loadUsers() {
+        try {
+            const response = await fetch('/api/users');
+            const users = await response.json();
+            renderUsersTable(users);
+        } catch (error) {
+            console.error('Error:', error);
+            document.getElementById('usersContent').innerHTML = '<div style="text-align: center; padding: 40px; color: #dc3545;">Failed to load users</div>';
+            showToast('Failed to load users', 'error');
+        }
+    }
+
+    function renderUsersTable(users) {
+        if (users.length === 0) {
+            document.getElementById('usersContent').innerHTML = '<div style="text-align: center; padding: 40px; background: white; border-radius: 12px;">No users found.</div>';
+            return;
+        }
+
+        const currentId = window.currentUserId;
+
+        const html = `
+            <div class="table-container">
+                <table>
+                    <thead>
+                        <tr><th>Name</th><th>Email</th><th>Role</th><th>Status</th><th>Created</th><th>Actions</th></tr>
+                    </thead>
+                    <tbody>
+                        ${users.map(user => {
+                            const isSelf = user.user_id === currentId;
+                            return `
+                            <tr>
+                                <td>${escapeHtml(user.name)}</td>
+                                <td>${escapeHtml(user.email)}</td>
+                                <td><span class="badge-${user.role}">${user.role.charAt(0).toUpperCase() + user.role.slice(1)}</span></td>
+                                <td><span class="${user.is_active ? 'badge-success' : 'badge-danger'}">${user.is_active ? 'Active' : 'Inactive'}</span></td>
+                                <td>${fmtDate(user.created_at)}</td>
+                                <td class="actions-cell">
+                                    <button class="btn-small" onclick="showEditUserModal(${user.user_id})">✏️ Edit</button>
+                                    <button class="btn-small" onclick="showResetPasswordModal(${user.user_id})">🔑 Reset Password</button>
+                                    <button class="btn-small ${user.is_active ? 'btn-warning' : 'btn-success'}"
+                                        onclick="toggleUserStatus(${user.user_id}, ${user.is_active})"
+                                        ${isSelf ? 'disabled title="Cannot deactivate your own account"' : ''}>
+                                        ${user.is_active ? '⏸ Deactivate' : '▶️ Activate'}
+                                    </button>
+                                </td>
+                            </tr>`;
+                        }).join('')}
+                    </tbody>
+                </table>
+            </div>
+        `;
+        document.getElementById('usersContent').innerHTML = html;
+    }
+
+    // ── Add User Modal ──────────────────────────────────────────
+
+    function showAddUserModal() {
+        const formHTML = `
+            <form id="userForm">
+                <div class="form-group"><label>Name *</label><input type="text" id="name" required minlength="2"></div>
+                <div class="form-group"><label>Email *</label><input type="email" id="email" required></div>
+                <div class="form-group"><label>Password *</label><input type="password" id="password" required minlength="8">
+                    <small style="color:#666;">Min 8 chars, uppercase, lowercase, number, special character</small>
+                </div>
+                <div class="form-group"><label>Role *</label>
+                    <select id="role">
+                        <option value="staff">Staff</option>
+                        <option value="manager">Manager</option>
+                        <option value="admin">Admin</option>
+                    </select>
+                </div>
+            </form>
+        `;
+
+        openModal('Add User', formHTML, async () => {
+            const name     = document.getElementById('name').value.trim();
+            const email    = document.getElementById('email').value.trim();
+            const password = document.getElementById('password').value;
+            const role     = document.getElementById('role').value;
+
+            if (!name || name.length < 2) {
+                showToast('Name must be at least 2 characters', 'error');
+                return;
+            }
+            if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+                showToast('Invalid email address', 'error');
+                return;
+            }
+            if (!password || password.length < 8) {
+                showToast('Password must be at least 8 characters', 'error');
+                return;
+            }
+
+            try {
+                const response = await fetch('/api/users', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ name, email, password, role })
+                });
+                const data = await response.json();
+                if (response.ok) {
+                    showToast('User created successfully', 'success');
+                    closeModal();
+                    loadUsers();
+                } else {
+                    showToast(data.error || 'Failed to create user', 'error');
+                }
+            } catch (error) {
+                showToast('Failed to create user', 'error');
+            }
+        });
+    }
+
+    // ── Edit User Modal ─────────────────────────────────────────
+
+    async function showEditUserModal(id) {
+        const user = await fetch(`/api/users/${id}`).then(r => {
+            if (!r.ok) throw new Error();
+            return r.json();
+        }).catch(() => { showToast('Failed to load user', 'error'); return null; });
+        if (!user) return;
+
+        const isSelf = user.user_id === window.currentUserId;
+
+        const formHTML = `
+            <form id="userForm">
+                <div class="form-group"><label>Name *</label><input type="text" id="name" value="${escapeHtml(user.name)}" required minlength="2"></div>
+                <div class="form-group"><label>Email *</label><input type="email" id="email" value="${escapeHtml(user.email)}" required></div>
+                <div class="form-group"><label>Role *</label>
+                    <select id="role" ${isSelf ? 'disabled title="You cannot change your own role"' : ''}>
+                        <option value="staff" ${user.role === 'staff' ? 'selected' : ''}>Staff</option>
+                        <option value="manager" ${user.role === 'manager' ? 'selected' : ''}>Manager</option>
+                        <option value="admin" ${user.role === 'admin' ? 'selected' : ''}>Admin</option>
+                    </select>
+                    ${isSelf ? '<small style="color:#666;">You cannot change your own role.</small>' : ''}
+                </div>
+            </form>
+        `;
+
+        openModal('Edit User', formHTML, async () => {
+            const name  = document.getElementById('name').value.trim();
+            const email = document.getElementById('email').value.trim();
+            const role  = isSelf ? user.role : document.getElementById('role').value;
+
+            if (!name || name.length < 2) {
+                showToast('Name must be at least 2 characters', 'error');
+                return;
+            }
+            if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+                showToast('Invalid email address', 'error');
+                return;
+            }
+
+            try {
+                const response = await fetch(`/api/users/${id}`, {
+                    method: 'PUT',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ name, email, role })
+                });
+                const data = await response.json();
+                if (response.ok) {
+                    showToast('User updated successfully', 'success');
+                    closeModal();
+                    loadUsers();
+                } else {
+                    showToast(data.error || 'Failed to update user', 'error');
+                }
+            } catch (error) {
+                showToast('Failed to update user', 'error');
+            }
+        });
+    }
+
+    // ── Reset Password Modal ────────────────────────────────────
+
+    function showResetPasswordModal(id) {
+        const formHTML = `
+            <form id="resetPasswordForm">
+                <div class="form-group"><label>New Password *</label><input type="password" id="newPassword" required minlength="8">
+                    <small style="color:#666;">Min 8 chars, uppercase, lowercase, number, special character</small>
+                </div>
+                <div class="form-group"><label>Confirm Password *</label><input type="password" id="confirmPassword" required></div>
+            </form>
+        `;
+
+        openModal('Reset Password', formHTML, async () => {
+            const newPassword      = document.getElementById('newPassword').value;
+            const confirmPassword  = document.getElementById('confirmPassword').value;
+
+            if (!newPassword || newPassword.length < 8) {
+                showToast('Password must be at least 8 characters', 'error');
+                return;
+            }
+            if (newPassword !== confirmPassword) {
+                showToast('Passwords do not match', 'error');
+                return;
+            }
+
+            try {
+                const response = await fetch(`/api/users/${id}/password`, {
+                    method: 'PUT',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ new_password: newPassword })
+                });
+                const data = await response.json();
+                if (response.ok) {
+                    showToast('Password updated successfully', 'success');
+                    closeModal();
+                } else {
+                    showToast(data.error || 'Failed to reset password', 'error');
+                }
+            } catch (error) {
+                showToast('Failed to reset password', 'error');
+            }
+        });
+    }
+
+    // ── Toggle Status ───────────────────────────────────────────
+
+    async function toggleUserStatus(id, currentlyActive) {
+        const action = currentlyActive ? 'deactivate' : 'activate';
+        if (!confirm(`Are you sure you want to ${action} this user?`)) return;
+
+        try {
+            const response = await fetch(`/api/users/${id}/status`, {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' }
+            });
+            const data = await response.json();
+            if (response.ok) {
+                showToast(`User ${action}d successfully`, 'success');
+                loadUsers();
+            } else {
+                showToast(data.error || `Failed to ${action} user`, 'error');
+            }
+        } catch (error) {
+            showToast(`Failed to ${action} user`, 'error');
+        }
+    }
+
+    whenUserReady(function(role) {
+        userRole = role;
+        loadUsers();
+    });
+</script>
+
+<style>
+    .badge-admin { background: #e3f2fd; color: #1565c0; padding: 3px 10px; border-radius: 12px; font-size: 12px; font-weight: 600; }
+    .badge-manager { background: #fff3e0; color: #e65100; padding: 3px 10px; border-radius: 12px; font-size: 12px; font-weight: 600; }
+    .badge-staff { background: #f3e5f5; color: #7b1fa2; padding: 3px 10px; border-radius: 12px; font-size: 12px; font-weight: 600; }
+    .btn-warning { background: #ff9800; color: white; }
+    .btn-warning:hover { background: #f57c00; }
+    .btn-success { background: #4caf50; color: white; }
+    .btn-success:hover { background: #388e3c; }
+    .actions-cell { white-space: nowrap; }
+    .actions-cell button { margin-right: 4px; margin-bottom: 4px; }
+    button:disabled { opacity: 0.5; cursor: not-allowed; }
+    .section-header { display: flex; justify-content: flex-end; align-items: center; margin-bottom: 20px; }
+</style>
+{% endblock %}

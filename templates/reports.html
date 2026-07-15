@@ -1,0 +1,553 @@
+{% extends "base.html" %}
+{% block title %}Reports - IMS{% endblock %}
+{% block page_title %}Reports{% endblock %}
+
+{% block content %}
+<div id="reportsPage">
+
+<!-- ─── FILTER BAR ────────────────────────────────────────────── -->
+<div style="background:#fff;border-radius:10px;padding:14px 18px;box-shadow:0 1px 3px rgba(0,0,0,0.08);margin-bottom:18px;display:flex;gap:10px;flex-wrap:wrap;align-items:center;">
+    <label style="font-size:13px;color:#6b7280;font-weight:500;">From</label>
+    <input type="date" id="rpFrom" style="padding:7px 10px;border:1px solid #e5e7eb;border-radius:8px;font-size:13px;">
+    <label style="font-size:13px;color:#6b7280;font-weight:500;">To</label>
+    <input type="date" id="rpTo" style="padding:7px 10px;border:1px solid #e5e7eb;border-radius:8px;font-size:13px;">
+    <label style="font-size:13px;color:#6b7280;font-weight:500;margin-left:4px;">Granularity</label>
+    <select id="rpGranularity" style="padding:7px 10px;border:1px solid #e5e7eb;border-radius:8px;font-size:13px;">
+        <option value="daily">Daily</option>
+        <option value="weekly">Weekly</option>
+        <option value="monthly">Monthly</option>
+        <option value="yearly">Yearly</option>
+    </select>
+    <div style="display:flex;gap:4px;margin-left:6px;">
+        <button onclick="rpQuickSelect('today')" class="rp-quick-btn">Today</button>
+        <button onclick="rpQuickSelect('week')" class="rp-quick-btn">This Week</button>
+        <button onclick="rpQuickSelect('month')" class="rp-quick-btn">This Month</button>
+        <button onclick="rpQuickSelect('year')" class="rp-quick-btn">This Year</button>
+        <button onclick="rpQuickSelect('30')" class="rp-quick-btn">Last 30 Days</button>
+    </div>
+    <button id="rpApplyBtn" onclick="rpApply()" class="btn-primary" style="margin-left:8px;">Apply</button>
+</div>
+
+<!-- ─── TAB NAVIGATION ────────────────────────────────────────── -->
+<div style="display:flex;gap:0;margin-bottom:0;border-bottom:2px solid #e5e7eb;">
+    <button class="rp-tab active" data-tab="sales" onclick="rpSwitchTab('sales')">💰 Sales</button>
+    <button class="rp-tab" data-tab="stock" onclick="rpSwitchTab('stock')">📦 Stock</button>
+    <button class="rp-tab" data-tab="profit" onclick="rpSwitchTab('profit')">💵 Profit</button>
+</div>
+
+<!-- ─── SALES TAB ─────────────────────────────────────────────── -->
+<div id="rpTabSales" class="rp-tab-panel">
+    <div id="rpSalesLoading" class="loading-msg">Loading sales report...</div>
+    <div id="rpSalesContent" style="display:none;">
+        <div class="stats-grid" id="rpSalesStats"></div>
+        <div style="display:grid;grid-template-columns:2fr 1fr;gap:16px;margin-bottom:18px;">
+            <div style="background:#fff;border-radius:10px;padding:18px;box-shadow:0 1px 3px rgba(0,0,0,0.08);">
+                <h3 style="font-size:14px;font-weight:600;margin-bottom:14px;color:#111827;">Revenue Over Time</h3>
+                <div style="position:relative;height:260px;"><canvas id="rpSalesLineChart"></canvas></div>
+            </div>
+            <div style="background:#fff;border-radius:10px;padding:18px;box-shadow:0 1px 3px rgba(0,0,0,0.08);">
+                <h3 style="font-size:14px;font-weight:600;margin-bottom:14px;color:#111827;">Payment Methods</h3>
+                <div style="position:relative;height:260px;"><canvas id="rpSalesPieChart"></canvas></div>
+            </div>
+        </div>
+        <div class="table-container" style="margin-bottom:18px;">
+            <h3 style="font-size:14px;font-weight:600;margin-bottom:12px;">🏆 Top 10 Products by Revenue</h3>
+            <table><thead><tr><th>#</th><th>Product</th><th>Qty Sold</th><th>Revenue</th></tr></thead>
+            <tbody id="rpSalesTopProducts"></tbody></table>
+        </div>
+        <div style="text-align:right;margin-bottom:18px;">
+            <a id="rpSalesCsvBtn" href="#" class="btn-primary" style="text-decoration:none;display:inline-block;">⬇️ Download CSV</a>
+        </div>
+    </div>
+    <div id="rpSalesEmpty" style="display:none;text-align:center;padding:40px;color:#6b7280;background:#fff;border-radius:10px;">No sales data for this period.</div>
+</div>
+
+<!-- ─── STOCK TAB ─────────────────────────────────────────────── -->
+<div id="rpTabStock" class="rp-tab-panel" style="display:none;">
+    <div id="rpStockLoading" class="loading-msg">Loading stock report...</div>
+    <div id="rpStockContent" style="display:none;">
+        <div class="stats-grid" id="rpStockStats"></div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:18px;">
+            <div style="background:#fff;border-radius:10px;padding:18px;box-shadow:0 1px 3px rgba(0,0,0,0.08);">
+                <h3 style="font-size:14px;font-weight:600;margin-bottom:14px;color:#111827;">Movement by Type</h3>
+                <div style="position:relative;height:260px;"><canvas id="rpStockBarChart"></canvas></div>
+            </div>
+            <div style="background:#fff;border-radius:10px;padding:18px;box-shadow:0 1px 3px rgba(0,0,0,0.08);">
+                <h3 style="font-size:14px;font-weight:600;margin-bottom:14px;color:#111827;">Stock Summary</h3>
+                <div id="rpStockSummaryInfo" style="font-size:13px;color:#6b7280;"></div>
+            </div>
+        </div>
+        <div class="table-container" style="margin-bottom:18px;">
+            <h3 style="font-size:14px;font-weight:600;margin-bottom:12px;">📦 Product Stock Movement</h3>
+            <table><thead><tr><th>Product</th><th>Opening</th><th>In</th><th>Out</th><th>Closing</th><th>Status</th></tr></thead>
+            <tbody id="rpStockTable"></tbody></table>
+        </div>
+        <div style="text-align:right;margin-bottom:18px;">
+            <a id="rpStockCsvBtn" href="#" class="btn-primary" style="text-decoration:none;display:inline-block;">⬇️ Download CSV</a>
+        </div>
+    </div>
+    <div id="rpStockEmpty" style="display:none;text-align:center;padding:40px;color:#6b7280;background:#fff;border-radius:10px;">No stock data for this period.</div>
+</div>
+
+<!-- ─── PROFIT TAB ────────────────────────────────────────────── -->
+<div id="rpTabProfit" class="rp-tab-panel" style="display:none;">
+    <div id="rpProfitLoading" class="loading-msg">Loading profit report...</div>
+    <div id="rpProfitContent" style="display:none;">
+        <div class="stats-grid" id="rpProfitStats"></div>
+        <div style="background:#fff;border-radius:10px;padding:18px;box-shadow:0 1px 3px rgba(0,0,0,0.08);margin-bottom:18px;">
+            <h3 style="font-size:14px;font-weight:600;margin-bottom:14px;color:#111827;">Top 10 Products by Profit</h3>
+            <div style="position:relative;height:280px;"><canvas id="rpProfitBarChart"></canvas></div>
+        </div>
+        <div class="table-container" style="margin-bottom:18px;">
+            <h3 style="font-size:14px;font-weight:600;margin-bottom:12px;">💵 Profit by Product</h3>
+            <table><thead><tr><th>Product</th><th>Qty Sold</th><th>Revenue</th><th>Cost</th><th>Profit</th><th>Margin %</th></tr></thead>
+            <tbody id="rpProfitTable"></tbody></table>
+        </div>
+        <div style="text-align:right;margin-bottom:18px;">
+            <a id="rpProfitCsvBtn" href="#" class="btn-primary" style="text-decoration:none;display:inline-block;">⬇️ Download CSV</a>
+        </div>
+    </div>
+    <div id="rpProfitEmpty" style="display:none;text-align:center;padding:40px;color:#6b7280;background:#fff;border-radius:10px;">No profit data for this period.</div>
+</div>
+
+</div>
+<style>
+.rp-tab {
+    padding: 10px 22px;
+    border: none;
+    background: none;
+    font-size: 14px;
+    font-weight: 500;
+    color: #6b7280;
+    cursor: pointer;
+    border-bottom: 2px solid transparent;
+    margin-bottom: -2px;
+    transition: all 0.15s;
+}
+.rp-tab:hover { color: #1e293b; }
+.rp-tab.active { color: #1e293b; border-bottom-color: #3b82f6; font-weight: 600; }
+.rp-quick-btn {
+    padding: 6px 12px;
+    background: #f9fafb;
+    color: #374151;
+    border: 1px solid #e5e7eb;
+    border-radius: 6px;
+    font-size: 12px;
+    cursor: pointer;
+    transition: all 0.15s;
+}
+.rp-quick-btn:hover { background: #e5e7eb; }
+.rp-quick-btn.active { background: #1e293b; color: #fff; border-color: #1e293b; }
+</style>
+{% endblock %}
+
+{% block scripts %}
+<script>
+(function() {
+    /* ── Chart instances (must destroy before re-creating) ── */
+    var chartSalesLine = null;
+    var chartSalesPie  = null;
+    var chartStockBar  = null;
+    var chartProfitBar = null;
+
+    var currentTab = 'sales';
+    var lastSalesData  = null;
+    var lastStockData  = null;
+    var lastProfitData = null;
+
+    /* ── Helpers ── */
+    function fmt(n) {
+        return '\u20A6' + parseFloat(n || 0).toLocaleString('en-PK', {minimumFractionDigits: 2, maximumFractionDigits: 2});
+    }
+    function fmtInt(n) {
+        return parseFloat(n || 0).toLocaleString('en-PK');
+    }
+    function today() {
+        var d = new Date();
+        return d.getFullYear() + '-' + String(d.getMonth()+1).padStart(2,'0') + '-' + String(d.getDate()).padStart(2,'0');
+    }
+    function daysAgo(n) {
+        var d = new Date(); d.setDate(d.getDate() - n);
+        return d.getFullYear() + '-' + String(d.getMonth()+1).padStart(2,'0') + '-' + String(d.getDate()).padStart(2,'0');
+    }
+    function getWeekStart() {
+        var d = new Date();
+        var day = d.getDay();
+        var diff = d.getDate() - day + (day === 0 ? -6 : 1);
+        d.setDate(diff);
+        return d.getFullYear() + '-' + String(d.getMonth()+1).padStart(2,'0') + '-' + String(d.getDate()).padStart(2,'0');
+    }
+    function getMonthStart() {
+        var d = new Date();
+        return d.getFullYear() + '-' + String(d.getMonth()+1).padStart(2,'0') + '-01';
+    }
+    function getYearStart() {
+        return new Date().getFullYear() + '-01-01';
+    }
+
+    /* ── Quick Select ── */
+    window.rpQuickSelect = function(preset) {
+        var from, to = today();
+        if (preset === 'today')    { from = to; }
+        else if (preset === 'week')  { from = getWeekStart(); }
+        else if (preset === 'month') { from = getMonthStart(); }
+        else if (preset === 'year')  { from = getYearStart(); }
+        else if (preset === '30')    { from = daysAgo(30); }
+        document.getElementById('rpFrom').value = from;
+        document.getElementById('rpTo').value = to;
+        rpApply();
+    };
+
+    /* ── Tab Switching ── */
+    window.rpSwitchTab = function(tab) {
+        currentTab = tab;
+        document.querySelectorAll('.rp-tab').forEach(function(el) {
+            el.classList.toggle('active', el.getAttribute('data-tab') === tab);
+        });
+        document.getElementById('rpTabSales').style.display  = tab === 'sales'  ? '' : 'none';
+        document.getElementById('rpTabStock').style.display  = tab === 'stock'  ? '' : 'none';
+        document.getElementById('rpTabProfit').style.display = tab === 'profit' ? '' : 'none';
+    };
+
+    /* ── Apply Filters ── */
+    window.rpApply = function() {
+        var dateFrom = document.getElementById('rpFrom').value;
+        var dateTo   = document.getElementById('rpTo').value;
+        var gran     = document.getElementById('rpGranularity').value;
+        if (!dateFrom || !dateTo) { showToast('Please select both dates', 'error'); return; }
+
+        var btn = document.getElementById('rpApplyBtn');
+        btn.disabled = true; btn.textContent = 'Loading...';
+
+        /* Show loading, hide content */
+        ['Sales','Stock','Profit'].forEach(function(t) {
+            document.getElementById('rp'+t+'Loading').style.display = '';
+            document.getElementById('rp'+t+'Content').style.display = 'none';
+            document.getElementById('rp'+t+'Empty').style.display   = 'none';
+        });
+
+        var params = 'date_from=' + dateFrom + '&date_to=' + dateTo;
+        Promise.all([
+            fetch('/api/reports/sales?' + params + '&granularity=' + gran).then(function(r) { return r.json(); }),
+            fetch('/api/reports/stock?' + params).then(function(r) { return r.json(); }),
+            fetch('/api/reports/profit?' + params).then(function(r) { return r.json(); })
+        ]).then(function(results) {
+            lastSalesData  = results[0];
+            lastStockData  = results[1];
+            lastProfitData = results[2];
+            renderSales(results[0]);
+            renderStock(results[1]);
+            renderProfit(results[2]);
+        }).catch(function(err) {
+            console.error('Reports fetch error:', err);
+            showToast('Failed to load reports', 'error');
+        }).finally(function() {
+            btn.disabled = false; btn.textContent = 'Apply';
+        });
+    };
+
+    /* ══════════════════════════════════════════════════════════════
+       SALES TAB
+       ══════════════════════════════════════════════════════════════ */
+    function renderSales(data) {
+        var loading = document.getElementById('rpSalesLoading');
+        var content = document.getElementById('rpSalesContent');
+        var empty   = document.getElementById('rpSalesEmpty');
+        loading.style.display = 'none';
+
+        var ps = data.period_summary || {};
+        var ts = data.time_series || [];
+        var tp = data.top_products || [];
+        var pm = data.payment_method_breakdown || [];
+
+        if (!ps.total_bills || ps.total_bills === 0) {
+            empty.style.display = ''; content.style.display = 'none'; return;
+        }
+        empty.style.display = 'none'; content.style.display = '';
+
+        /* Stat cards */
+        document.getElementById('rpSalesStats').innerHTML =
+            statCard('Total Revenue', fmt(ps.total_revenue), '\uD83D\uDCB0') +
+            statCard('Total Bills', fmtInt(ps.total_bills), '\uD83D\uDCB5') +
+            statCard('Avg Bill Value', fmt(ps.avg_bill_value), '\uD83D\uDCCA') +
+            statCard('Total GST', fmt(ps.total_gst), '\uD83D\uDCCA');
+
+        /* CSV button */
+        var gp = document.getElementById('rpGranularity').value;
+        var df = document.getElementById('rpFrom').value;
+        var dt = document.getElementById('rpTo').value;
+        document.getElementById('rpSalesCsvBtn').href =
+            '/api/reports/sales/csv?date_from=' + df + '&date_to=' + dt + '&granularity=' + gp;
+
+        /* Line chart: revenue over time */
+        renderSalesLineChart(ts);
+
+        /* Pie chart: payment methods */
+        renderSalesPieChart(pm);
+
+        /* Top products table */
+        var tbody = document.getElementById('rpSalesTopProducts');
+        if (!tp.length) {
+            tbody.innerHTML = '<tr><td colspan="4" style="text-align:center;color:#6b7280;">No product data</td></tr>';
+        } else {
+            tbody.innerHTML = tp.map(function(p, i) {
+                return '<tr><td>' + (i+1) + '</td><td>' + escapeHtml(p.product_name) + '</td>' +
+                    '<td>' + fmtInt(p.quantity_sold) + '</td><td style="font-weight:600;">' + fmt(p.revenue) + '</td></tr>';
+            }).join('');
+        }
+    }
+
+    function renderSalesLineChart(ts) {
+        if (chartSalesLine) { chartSalesLine.destroy(); chartSalesLine = null; }
+        var canvas = document.getElementById('rpSalesLineChart');
+        if (!ts.length) return;
+        chartSalesLine = new Chart(canvas, {
+            type: 'line',
+            data: {
+                labels: ts.map(function(r) { return r.period_label; }),
+                datasets: [{
+                    label: 'Revenue',
+                    data: ts.map(function(r) { return parseFloat(r.revenue || 0); }),
+                    borderColor: '#3b82f6',
+                    backgroundColor: 'rgba(59,130,246,0.1)',
+                    fill: true,
+                    tension: 0.3,
+                    pointRadius: 3,
+                    pointBackgroundColor: '#3b82f6'
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: { legend: { display: false } },
+                scales: {
+                    y: { beginAtZero: true, ticks: { callback: function(v) { return '\u20A6' + (v >= 1000 ? (v/1000).toFixed(0) + 'k' : v); } } }
+                }
+            }
+        });
+    }
+
+    function renderSalesPieChart(pm) {
+        if (chartSalesPie) { chartSalesPie.destroy(); chartSalesPie = null; }
+        var canvas = document.getElementById('rpSalesPieChart');
+        if (!pm.length) return;
+        var colors = ['#22c55e', '#3b82f6', '#8b5cf6', '#f59e0b', '#ef4444', '#06b6d4'];
+        chartSalesPie = new Chart(canvas, {
+            type: 'doughnut',
+            data: {
+                labels: pm.map(function(r) { return r.payment_method; }),
+                datasets: [{
+                    data: pm.map(function(r) { return parseFloat(r.revenue || 0); }),
+                    backgroundColor: colors.slice(0, pm.length)
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {
+                    legend: { position: 'bottom', labels: { font: { size: 12 }, padding: 12 } }
+                }
+            }
+        });
+    }
+
+    /* ══════════════════════════════════════════════════════════════
+       STOCK TAB
+       ══════════════════════════════════════════════════════════════ */
+    function renderStock(data) {
+        var loading = document.getElementById('rpStockLoading');
+        var content = document.getElementById('rpStockContent');
+        var empty   = document.getElementById('rpStockEmpty');
+        loading.style.display = 'none';
+
+        var ps  = data.period_summary || {};
+        var bp  = data.by_product || [];
+        var mb  = data.movement_breakdown || [];
+
+        if (!bp.length) {
+            empty.style.display = ''; content.style.display = 'none'; return;
+        }
+        empty.style.display = 'none'; content.style.display = '';
+
+        var discrepancies = bp.filter(function(r) { return !r.reconciled; }).length;
+
+        /* Stat cards */
+        document.getElementById('rpStockStats').innerHTML =
+            statCard('Stock In', fmtInt(ps.total_stock_in), '\u2B06\uFE0F') +
+            statCard('Stock Out', fmtInt(ps.total_stock_out), '\u2B07\uFE0F') +
+            statCard('Net Change', fmtInt(ps.net_change), '\uD83D\uDCC8') +
+            statCard('Discrepancies', discrepancies, discrepancies > 0 ? '\u26A0\uFE0F' : '\u2705',
+                     discrepancies > 0 ? 'color:#dc2626;' : '');
+
+        /* CSV button */
+        var df = document.getElementById('rpFrom').value;
+        var dt = document.getElementById('rpTo').value;
+        document.getElementById('rpStockCsvBtn').href =
+            '/api/reports/stock/csv?date_from=' + df + '&date_to=' + dt;
+
+        /* Bar chart: movement breakdown */
+        renderStockBarChart(mb);
+
+        /* Summary info */
+        document.getElementById('rpStockSummaryInfo').innerHTML =
+            '<div style="margin-bottom:8px;"><strong>Opening Stock:</strong> ' + fmtInt(ps.opening_stock_total) + '</div>' +
+            '<div style="margin-bottom:8px;"><strong>Closing Stock:</strong> ' + fmtInt(ps.closing_stock_total) + '</div>' +
+            '<div style="margin-bottom:8px;"><strong>Products Tracked:</strong> ' + bp.length + '</div>' +
+            '<div><strong>Reconciled:</strong> ' + (bp.length - discrepancies) + ' / ' + bp.length + '</div>';
+
+        /* Product table */
+        var tbody = document.getElementById('rpStockTable');
+        tbody.innerHTML = bp.map(function(r) {
+            var statusHtml = r.reconciled
+                ? '<span class="badge-success">Reconciled</span>'
+                : '<span class="badge-danger">Mismatch</span>';
+            var rowStyle = r.reconciled ? '' : 'background:#fef2f2;';
+            return '<tr style="' + rowStyle + '">' +
+                '<td>' + escapeHtml(r.product_name) + '</td>' +
+                '<td>' + fmtInt(r.opening_stock) + '</td>' +
+                '<td style="color:#16a34a;">+' + fmtInt(r.stock_in) + '</td>' +
+                '<td style="color:#dc2626;">-' + fmtInt(r.stock_out) + '</td>' +
+                '<td>' + fmtInt(r.closing_stock) + '</td>' +
+                '<td>' + statusHtml + '</td></tr>';
+        }).join('');
+    }
+
+    function renderStockBarChart(mb) {
+        if (chartStockBar) { chartStockBar.destroy(); chartStockBar = null; }
+        var canvas = document.getElementById('rpStockBarChart');
+        if (!mb.length) return;
+        chartStockBar = new Chart(canvas, {
+            type: 'bar',
+            data: {
+                labels: mb.map(function(r) { return r.movement_type; }),
+                datasets: [{
+                    label: 'Total Quantity',
+                    data: mb.map(function(r) { return parseFloat(r.total_quantity || 0); }),
+                    backgroundColor: ['#3b82f6', '#22c55e', '#f59e0b', '#ef4444', '#8b5cf6', '#06b6d4']
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: { legend: { display: false } },
+                scales: { y: { beginAtZero: true } }
+            }
+        });
+    }
+
+    /* ══════════════════════════════════════════════════════════════
+       PROFIT TAB
+       ══════════════════════════════════════════════════════════════ */
+    function renderProfit(data) {
+        var loading = document.getElementById('rpProfitLoading');
+        var content = document.getElementById('rpProfitContent');
+        var empty   = document.getElementById('rpProfitEmpty');
+        loading.style.display = 'none';
+
+        var ps = data.period_summary || {};
+        var bp = data.by_product || [];
+
+        if (!bp.length) {
+            empty.style.display = ''; content.style.display = 'none'; return;
+        }
+        empty.style.display = 'none'; content.style.display = '';
+
+        var excluded = ps.products_excluded_no_cost_price || 0;
+
+        /* Stat cards */
+        var excludedBadge = excluded > 0
+            ? '<div style="margin-top:6px;font-size:11px;color:#f59e0b;">\u26A0\uFE0F ' + excluded + ' product' + (excluded > 1 ? 's' : '') + ' excluded (no cost price) — <a href="/products" style="color:#2563eb;">fix on Products page</a></div>'
+            : '';
+        document.getElementById('rpProfitStats').innerHTML =
+            statCard('Total Revenue', fmt(ps.total_revenue), '\uD83D\uDCB0') +
+            statCard('Total Cost', fmt(ps.total_cost), '\uD83D\uDCCB') +
+            statCard('Total Profit', fmt(ps.total_profit), '\uD83D\uDCB8',
+                     ps.total_profit < 0 ? 'color:#dc2626;' : '') +
+            statCard('Avg Margin', parseFloat(ps.avg_margin_percent || 0).toFixed(1) + '%', '\uD83D\uDCCA') +
+            (excludedBadge ? '<div class="stat-card" style="grid-column:1/-1;">' + excludedBadge + '</div>' : '');
+
+        /* CSV button */
+        var df = document.getElementById('rpFrom').value;
+        var dt = document.getElementById('rpTo').value;
+        document.getElementById('rpProfitCsvBtn').href =
+            '/api/reports/profit/csv?date_from=' + df + '&date_to=' + dt;
+
+        /* Bar chart: top 10 by profit */
+        renderProfitBarChart(bp);
+
+        /* Profit table */
+        var tbody = document.getElementById('rpProfitTable');
+        tbody.innerHTML = bp.map(function(r) {
+            var margin = r.margin_percent != null ? parseFloat(r.margin_percent).toFixed(1) + '%' : '—';
+            var profitColor = parseFloat(r.profit) < 0 ? 'color:#dc2626;font-weight:600;' : 'font-weight:600;';
+            return '<tr>' +
+                '<td>' + escapeHtml(r.product_name) + '</td>' +
+                '<td>' + fmtInt(r.quantity_sold) + '</td>' +
+                '<td>' + fmt(r.revenue) + '</td>' +
+                '<td>' + fmt(r.cost) + '</td>' +
+                '<td style="' + profitColor + '">' + fmt(r.profit) + '</td>' +
+                '<td>' + margin + '</td></tr>';
+        }).join('');
+    }
+
+    function renderProfitBarChart(bp) {
+        if (chartProfitBar) { chartProfitBar.destroy(); chartProfitBar = null; }
+        var canvas = document.getElementById('rpProfitBarChart');
+        var top10 = bp.slice(0, 10);
+        if (!top10.length) return;
+        chartProfitBar = new Chart(canvas, {
+            type: 'bar',
+            data: {
+                labels: top10.map(function(r) {
+                    var name = r.product_name || '';
+                    return name.length > 18 ? name.substring(0, 16) + '..' : name;
+                }),
+                datasets: [
+                    {
+                        label: 'Revenue',
+                        data: top10.map(function(r) { return parseFloat(r.revenue || 0); }),
+                        backgroundColor: 'rgba(59,130,246,0.7)'
+                    },
+                    {
+                        label: 'Profit',
+                        data: top10.map(function(r) { return parseFloat(r.profit || 0); }),
+                        backgroundColor: top10.map(function(r) {
+                            return parseFloat(r.profit) >= 0 ? 'rgba(34,197,94,0.7)' : 'rgba(220,38,38,0.7)';
+                        })
+                    }
+                ]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: { legend: { position: 'top', labels: { font: { size: 12 } } } },
+                scales: {
+                    y: { beginAtZero: true, ticks: { callback: function(v) { return '\u20A6' + (v >= 1000 ? (v/1000).toFixed(0) + 'k' : v); } } },
+                    x: { ticks: { font: { size: 11 } } }
+                }
+            }
+        });
+    }
+
+    /* ── Stat Card Builder ── */
+    function statCard(label, value, icon, extraStyle) {
+        return '<div class="stat-card">' +
+            '<div class="stat-info">' +
+            '<div class="stat-label">' + label + '</div>' +
+            '<div class="stat-value" style="' + (extraStyle || '') + '">' + value + '</div>' +
+            '</div>' +
+            '<div class="stat-icon">' + (icon || '') + '</div></div>';
+    }
+
+    /* ── Init ── */
+    document.addEventListener('DOMContentLoaded', function() {
+        whenUserReady(function(role) {
+            /* Set default date range: last 30 days */
+            document.getElementById('rpFrom').value = daysAgo(30);
+            document.getElementById('rpTo').value   = today();
+            rpApply();
+        });
+    });
+})();
+</script>
+{% endblock %}

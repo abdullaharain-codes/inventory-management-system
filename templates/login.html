@@ -1,0 +1,198 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Login — Inventory Management System</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+    <style>
+        html, body {
+            height: 100%;
+            overflow: auto;
+            background: #f1f5f9;
+        }
+        .auth-wrapper {
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 20px;
+        }
+        .auth-card {
+            background: #fff;
+            border-radius: 14px;
+            padding: 40px 36px;
+            width: 100%;
+            max-width: 420px;
+            box-shadow: 0 4px 24px rgba(0,0,0,0.10);
+        }
+        .auth-logo {
+            text-align: center;
+            margin-bottom: 28px;
+        }
+        .auth-logo h1 {
+            font-size: 1.6rem;
+            font-weight: 700;
+            color: #1e293b;
+            margin-bottom: 4px;
+        }
+        .auth-logo p {
+            font-size: 0.875rem;
+            color: #6b7280;
+        }
+        .auth-title {
+            font-size: 1.2rem;
+            font-weight: 600;
+            color: #111827;
+            margin-bottom: 24px;
+            text-align: center;
+        }
+        .form-group {
+            margin-bottom: 18px;
+        }
+        .form-group label {
+            display: block;
+            font-size: 0.875rem;
+            font-weight: 500;
+            color: #374151;
+            margin-bottom: 6px;
+        }
+        .form-group input {
+            width: 100%;
+            padding: 10px 14px;
+            border: 1px solid #d1d5db;
+            border-radius: 8px;
+            font-size: 0.9rem;
+            transition: border-color 0.2s;
+            box-sizing: border-box;
+        }
+        .form-group input:focus {
+            outline: none;
+            border-color: #1e293b;
+        }
+        .btn-auth {
+            width: 100%;
+            padding: 12px;
+            background: #1e293b;
+            color: #fff;
+            border: none;
+            border-radius: 8px;
+            font-size: 0.95rem;
+            font-weight: 600;
+            cursor: pointer;
+            transition: background 0.15s;
+            margin-top: 4px;
+        }
+        .btn-auth:hover    { background: #0f172a; }
+        .btn-auth:disabled { opacity: 0.6; cursor: not-allowed; }
+        .auth-error {
+            background: #fef2f2;
+            border: 1px solid #fca5a5;
+            color: #dc2626;
+            padding: 10px 14px;
+            border-radius: 8px;
+            font-size: 0.875rem;
+            margin-bottom: 16px;
+            display: none;
+        }
+        .auth-links {
+            text-align: center;
+            margin-top: 20px;
+            font-size: 0.875rem;
+            color: #6b7280;
+        }
+        .auth-links a {
+            color: #1e293b;
+            text-decoration: none;
+            font-weight: 500;
+        }
+        .auth-links a:hover { text-decoration: underline; }
+        .divider {
+            margin: 0 8px;
+            color: #d1d5db;
+        }
+    </style>
+</head>
+<body>
+<div class="auth-wrapper">
+    <div class="auth-card">
+        <div class="auth-logo">
+            <h1>📦 IMS</h1>
+            <p>Inventory Management System</p>
+        </div>
+        <div class="auth-title">Sign in to your account</div>
+
+        <div class="auth-error" id="errorMsg"></div>
+
+        <div class="form-group">
+            <label for="email">Email Address</label>
+            <input type="email" id="email" placeholder="you@example.com" autocomplete="email">
+        </div>
+        <div class="form-group">
+            <label for="password">Password</label>
+            <input type="password" id="password" placeholder="Enter your password" autocomplete="current-password">
+        </div>
+
+        <button class="btn-auth" id="loginBtn" onclick="doLogin()">Sign In</button>
+
+        <div class="auth-links">
+            <a href="/forgot-password">Forgot password?</a>
+        </div>
+    </div>
+</div>
+
+<script>
+    // Auto-focus email field
+    document.getElementById('email').focus();
+
+    // Allow Enter key to submit
+    document.addEventListener('keydown', function(e) {
+        if (e.key === 'Enter') doLogin();
+    });
+
+    async function doLogin() {
+        var email    = document.getElementById('email').value.trim();
+        var password = document.getElementById('password').value;
+        var btn      = document.getElementById('loginBtn');
+        var errEl    = document.getElementById('errorMsg');
+
+        errEl.style.display = 'none';
+
+        if (!email || !password) {
+            showError('Please enter your email and password.');
+            return;
+        }
+
+        btn.disabled    = true;
+        btn.textContent = 'Signing in...';
+
+        try {
+            var res = await fetch('/api/auth/login', {
+                method:      'POST',
+                headers:     { 'Content-Type': 'application/json' },
+                credentials: 'include',
+                body:        JSON.stringify({ email: email, password: password })
+            });
+            var data = await res.json();
+
+            if (res.ok) {
+                window.location.href = '/dashboard';
+            } else {
+                showError(data.error || 'Login failed. Please try again.');
+            }
+        } catch(e) {
+            showError('Network error. Please check your connection.');
+        } finally {
+            btn.disabled    = false;
+            btn.textContent = 'Sign In';
+        }
+    }
+
+    function showError(msg) {
+        var el = document.getElementById('errorMsg');
+        el.textContent    = msg;
+        el.style.display  = 'block';
+    }
+</script>
+</body>
+</html>

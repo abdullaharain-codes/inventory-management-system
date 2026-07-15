@@ -4,9 +4,22 @@
 {% block page_title %}Products Management{% endblock %}
 
 {% block content %}
+<style>
+    .cost-col, .cost-field { display: none; }
+    .toast-item.toast-warning { background: #e67e22; }
+</style>
 <div class="section-header">
-    <input type="text" id="searchInput" placeholder="🔍 Search products..." class="search-input">
-    <button class="btn-primary" onclick="showAddProductModal()">+ Add Product</button>
+    <input type="text" id="searchInput" placeholder="🔍 Search by name, category, SKU, or barcode..." class="search-input">
+    <div style="display:flex;gap:8px;flex-wrap:wrap;">
+        <span id="costBulkActions" style="display:none;">
+            <a href="/api/products/export-cost-template" class="btn-small" style="text-decoration:none;">⬇️ Download Cost Template</a>
+            <label class="btn-small" style="cursor:pointer;margin:0;">
+                ⬆️ Upload Cost Prices
+                <input type="file" id="costImportInput" accept=".csv" style="display:none;">
+            </label>
+        </span>
+        <button class="btn-primary" onclick="showAddProductModal()" id="addProductBtn">+ Add Product</button>
+    </div>
 </div>
 
 <div id="productsContent">
@@ -19,8 +32,7 @@
             const response = await fetch('/api/products');
             const products = await response.json();
             renderProductsTable(products);
-            
-            // Setup search
+
             const searchInput = document.getElementById('searchInput');
             searchInput.oninput = async (e) => {
                 const query = e.target.value;
@@ -38,35 +50,50 @@
             showToast('Failed to load products', 'error');
         }
     }
-    
+
+    var userRole = 'staff';
+
     async function renderProductsTable(products) {
         if (products.length === 0) {
             document.getElementById('productsContent').innerHTML = '<div style="text-align: center; padding: 40px; background: white; border-radius: 12px;">No products found.</div>';
             return;
         }
-        
-        const suppliers = await fetch('/api/suppliers').then(r => r.json());
+
         const supplierMap = {};
-        suppliers.forEach(s => supplierMap[s.supplier_id] = s.name);
-        
+        try {
+            const suppRes = await fetch('/api/suppliers');
+            if (suppRes.ok) {
+                const suppliers = await suppRes.json();
+                suppliers.forEach(s => supplierMap[s.supplier_id] = s.name);
+            }
+        } catch(e) {}
+
         const html = `
             <div class="table-container">
                 <table>
                     <thead>
-                        <tr><th>ID</th><th>Name</th><th>Category</th><th>Price</th><th>Stock</th><th>Supplier</th><th>Actions</th></tr>
+                        <tr><th>ID</th><th>Image</th><th>Name</th><th>SKU</th><th>Category</th><th>Price</th><th class="cost-col">Cost</th><th>Stock</th><th>Unit</th><th>Supplier</th><th>Actions</th></tr>
                     </thead>
                     <tbody>
                         ${products.map(product => `
-                            <tr ${product.stock_quantity < 10 ? 'class="low-stock"' : ''}>
+                            <tr ${product.stock_quantity <= (product.minimum_stock_threshold || 10) ? 'class="low-stock"' : ''}>
                                 <td>${product.product_id}</td>
+                                <td>
+                                    ${product.image_path
+                                        ? `<img src="/${product.image_path}" alt="" style="width:36px;height:36px;object-fit:cover;border-radius:4px;">`
+                                        : `<span style="font-size:18px;">📦</span>`}
+                                </td>
                                 <td>${escapeHtml(product.name)}</td>
+                                <td style="font-family:monospace;font-size:13px;">${escapeHtml(product.sku || '-')}</td>
                                 <td>${escapeHtml(product.category || '-')}</td>
-                                <td>$${parseFloat(product.price).toFixed(2)}</td>
-                                <td><span class="${product.stock_quantity < 10 ? 'badge-danger' : 'badge-success'}">${product.stock_quantity}</span></td>
+                                <td>₨${parseFloat(product.price).toLocaleString('en-PK', {minimumFractionDigits: 2})}</td>
+                                <td class="cost-col">${product.cost_price != null ? '₨' + parseFloat(product.cost_price).toLocaleString('en-PK', {minimumFractionDigits: 2}) : '—'}</td>
+                                <td><span class="${product.stock_quantity <= (product.minimum_stock_threshold || 10) ? 'badge-danger' : 'badge-success'}">${product.stock_quantity}</span></td>
+                                <td>${escapeHtml(product.unit_of_measure || 'pcs')}</td>
                                 <td>${escapeHtml(supplierMap[product.supplier_id] || '-')}</td>
                                 <td>
-                                    <button class="btn-small" onclick="showEditProductModal(${product.product_id})">✏️ Edit</button>
-                                    <button class="btn-small btn-danger" onclick="deleteProduct(${product.product_id})">🗑️ Delete</button>
+                                    ${userRole !== 'staff' ? `<button class="btn-small" onclick="showEditProductModal(${product.product_id})">✏️ Edit</button>` : ''}
+                                    ${userRole === 'admin' ? `<button class="btn-small btn-danger" onclick="deleteProduct(${product.product_id})">🗑️ Delete</button>` : ''}
                                 </td>
                             </tr>
                         `).join('')}
@@ -75,17 +102,62 @@
             </div>
         `;
         document.getElementById('productsContent').innerHTML = html;
+        if (userRole === 'admin' || userRole === 'manager') {
+            document.querySelectorAll('.cost-col').forEach(el => el.style.display = 'table-cell');
+        }
     }
-    
+
+    async function fetchCategories() {
+        try {
+            const res = await fetch('/api/categories');
+            if (res.ok) return res.json();
+        } catch(e) {}
+        return [];
+    }
+
     async function showAddProductModal() {
-        const suppliers = await fetch('/api/suppliers').then(r => r.json());
+        const [suppliers, categories] = await Promise.all([
+            fetch('/api/suppliers').then(r => r.json()),
+            fetchCategories()
+        ]);
         const formHTML = `
             <form id="productForm">
-                <div class="form-group"><label>Name *</label><input type="text" id="name" required></div>
+                <div class="form-row">
+                    <div class="form-group"><label>Name *</label><input type="text" id="name" required></div>
+                    <div class="form-group"><label>SKU</label><input type="text" id="sku" placeholder="e.g. LAP-PRO-X15"></div>
+                </div>
                 <div class="form-group"><label>Description</label><textarea id="description" rows="2"></textarea></div>
-                <div class="form-group"><label>Category</label><input type="text" id="category"></div>
-                <div class="form-group"><label>Price *</label><input type="number" step="0.01" id="price" required></div>
-                <div class="form-group"><label>Stock Quantity</label><input type="number" id="stock_quantity" value="0"></div>
+                <div class="form-row">
+                    <div class="form-group"><label>Category</label>
+                        <select id="category_id">
+                            <option value="">None</option>
+                            ${categories.map(c => `<option value="${c.category_id}">${escapeHtml(c.name)}</option>`).join('')}
+                        </select>
+                    </div>
+                    <div class="form-group"><label>Unit</label>
+                        <select id="unit_of_measure">
+                            <option value="pcs">pcs</option>
+                            <option value="kg">kg</option>
+                            <option value="box">box</option>
+                            <option value="litre">litre</option>
+                            <option value="pack">pack</option>
+                            <option value="pair">pair</option>
+                            <option value="meter">meter</option>
+                        </select>
+                    </div>
+                </div>
+                <div class="form-row">
+                    <div class="form-group"><label>Price *</label><input type="number" step="0.01" id="price" required></div>
+                    <div class="form-group cost-field"><label>Cost Price</label><input type="number" step="0.01" id="cost_price" placeholder="Purchase cost per unit"></div>
+                </div>
+                <div class="form-row">
+                    <div class="form-group"><label>Tax Rate (%)</label><input type="number" step="0.01" id="tax_rate" value="0.00"></div>
+                    <div class="form-group"><label>Stock Quantity</label><input type="number" id="stock_quantity" value="0"></div>
+                </div>
+                <div class="form-row">
+                    <div class="form-group"><label>Barcode</label><input type="text" id="barcode" placeholder="e.g. 8901234567890"></div>
+                    <div class="form-group"></div>
+                </div>
                 <div class="form-group"><label>Supplier</label>
                     <select id="supplier_id"><option value="">None</option>
                         ${suppliers.map(s => `<option value="${s.supplier_id}">${escapeHtml(s.name)}</option>`).join('')}
@@ -93,108 +165,252 @@
                 </div>
             </form>
         `;
-        
+
         openModal('Add Product', formHTML, async () => {
+            const catVal = document.getElementById('category_id').value;
             const data = {
                 name: document.getElementById('name').value,
                 description: document.getElementById('description').value,
-                category: document.getElementById('category').value,
+                category_id: catVal ? parseInt(catVal) : null,
+                sku: document.getElementById('sku').value || null,
+                barcode: document.getElementById('barcode').value || null,
+                unit_of_measure: document.getElementById('unit_of_measure').value,
+                tax_rate: parseFloat(document.getElementById('tax_rate').value) || 0,
                 price: parseFloat(document.getElementById('price').value),
+                cost_price: document.getElementById('cost_price').value ? parseFloat(document.getElementById('cost_price').value) : null,
                 stock_quantity: parseInt(document.getElementById('stock_quantity').value),
                 supplier_id: document.getElementById('supplier_id').value || null
             };
-            
+
             if (!data.name || !data.price) {
                 showToast('Please fill required fields', 'error');
                 return;
             }
-            
+
             try {
                 const response = await fetch('/api/products', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify(data)
                 });
+                const result = await response.json().catch(() => null);
                 if (response.ok) {
                     showToast('Product added successfully', 'success');
                     closeModal();
                     loadProducts();
                 } else {
-                    throw new Error('Failed to add product');
+                    showToast(result?.error || 'Failed to add product', 'error');
                 }
             } catch (error) {
                 showToast('Failed to add product', 'error');
             }
         });
+        if (userRole === 'admin' || userRole === 'manager') {
+            document.querySelectorAll('.cost-field').forEach(el => el.style.display = 'block');
+        }
     }
-    
+
     async function showEditProductModal(id) {
-        const [product, suppliers] = await Promise.all([
+        const [product, suppliers, categories] = await Promise.all([
             fetch(`/api/products/${id}`).then(r => r.json()),
-            fetch('/api/suppliers').then(r => r.json())
+            fetch('/api/suppliers').then(r => r.json()),
+            fetchCategories()
         ]);
-        
+
+        const unitOptions = ['pcs','kg','box','litre','pack','pair','meter'];
+        const unitSelect = unitOptions.map(u =>
+            `<option value="${u}" ${product.unit_of_measure === u ? 'selected' : ''}>${u}</option>`
+        ).join('');
+
         const formHTML = `
             <form id="productForm">
-                <div class="form-group"><label>Name *</label><input type="text" id="name" value="${escapeHtml(product.name)}" required></div>
+                <div class="form-row">
+                    <div class="form-group"><label>Name *</label><input type="text" id="name" value="${escapeHtml(product.name)}" required></div>
+                    <div class="form-group"><label>SKU</label><input type="text" id="sku" value="${escapeHtml(product.sku || '')}" placeholder="e.g. LAP-PRO-X15"></div>
+                </div>
                 <div class="form-group"><label>Description</label><textarea id="description" rows="2">${escapeHtml(product.description || '')}</textarea></div>
-                <div class="form-group"><label>Category</label><input type="text" id="category" value="${escapeHtml(product.category || '')}"></div>
-                <div class="form-group"><label>Price *</label><input type="number" step="0.01" id="price" value="${product.price}" required></div>
-                <div class="form-group"><label>Stock Quantity</label><input type="number" id="stock_quantity" value="${product.stock_quantity}"></div>
+                <div class="form-row">
+                    <div class="form-group"><label>Category</label>
+                        <select id="category_id">
+                            <option value="">None</option>
+                            ${categories.map(c => `<option value="${c.category_id}" ${product.category_id == c.category_id ? 'selected' : ''}>${escapeHtml(c.name)}</option>`).join('')}
+                        </select>
+                    </div>
+                    <div class="form-group"><label>Unit</label>
+                        <select id="unit_of_measure">${unitSelect}</select>
+                    </div>
+                </div>
+                <div class="form-row">
+                    <div class="form-group"><label>Price *</label><input type="number" step="0.01" id="price" value="${product.price}" required></div>
+                    <div class="form-group cost-field"><label>Cost Price</label><input type="number" step="0.01" id="cost_price" value="${product.cost_price != null ? product.cost_price : ''}" placeholder="Purchase cost per unit"></div>
+                </div>
+                <div class="form-row">
+                    <div class="form-group"><label>Tax Rate (%)</label><input type="number" step="0.01" id="tax_rate" value="${product.tax_rate || 0}"></div>
+                    <div class="form-group"><label>Stock Quantity</label><input type="number" id="stock_quantity" value="${product.stock_quantity}"></div>
+                    <div class="form-group"><label>Barcode</label><input type="text" id="barcode" value="${escapeHtml(product.barcode || '')}" placeholder="e.g. 8901234567890"></div>
+                </div>
                 <div class="form-group"><label>Supplier</label>
                     <select id="supplier_id">
                         <option value="">None</option>
                         ${suppliers.map(s => `<option value="${s.supplier_id}" ${product.supplier_id == s.supplier_id ? 'selected' : ''}>${escapeHtml(s.name)}</option>`).join('')}
                     </select>
                 </div>
+                <div class="form-group">
+                    <label>Product Image</label>
+                    <div style="display:flex;align-items:center;gap:12px;">
+                        <input type="file" id="image_file" accept="image/jpeg,image/png,image/webp">
+                        <button type="button" class="btn-small" id="uploadImageBtn" style="${product.image_path ? '' : 'display:none;'}">Upload</button>
+                    </div>
+                    <div id="imagePreview" style="margin-top:8px;">
+                        ${product.image_path
+                            ? `<img src="/${product.image_path}" alt="" style="max-width:120px;max-height:80px;object-fit:cover;border-radius:4px;border:1px solid #ddd;">`
+                            : '<span style="color:#999;font-size:13px;">No image uploaded</span>'}
+                    </div>
+                </div>
             </form>
         `;
-        
+
         openModal('Edit Product', formHTML, async () => {
+            const catVal = document.getElementById('category_id').value;
             const data = {
                 name: document.getElementById('name').value,
                 description: document.getElementById('description').value,
-                category: document.getElementById('category').value,
+                category_id: catVal ? parseInt(catVal) : null,
+                sku: document.getElementById('sku').value || null,
+                barcode: document.getElementById('barcode').value || null,
+                unit_of_measure: document.getElementById('unit_of_measure').value,
+                tax_rate: parseFloat(document.getElementById('tax_rate').value) || 0,
                 price: parseFloat(document.getElementById('price').value),
+                cost_price: document.getElementById('cost_price').value ? parseFloat(document.getElementById('cost_price').value) : null,
                 stock_quantity: parseInt(document.getElementById('stock_quantity').value),
                 supplier_id: document.getElementById('supplier_id').value || null
             };
-            
+
             try {
                 const response = await fetch(`/api/products/${id}`, {
                     method: 'PUT',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify(data)
                 });
+                const result = await response.json().catch(() => null);
                 if (response.ok) {
                     showToast('Product updated successfully', 'success');
                     closeModal();
                     loadProducts();
                 } else {
-                    throw new Error('Failed to update product');
+                    showToast(result?.error || 'Failed to update product', 'error');
                 }
             } catch (error) {
                 showToast('Failed to update product', 'error');
             }
         });
+        if (userRole === 'admin' || userRole === 'manager') {
+            document.querySelectorAll('.cost-field').forEach(el => el.style.display = 'block');
+        }
+
+        // Wire up image upload inside the modal
+        setTimeout(function() {
+            var fileInput = document.getElementById('image_file');
+            var uploadBtn = document.getElementById('uploadImageBtn');
+            var preview = document.getElementById('imagePreview');
+            if (!fileInput) return;
+
+            fileInput.addEventListener('change', function() {
+                uploadBtn.style.display = this.files.length > 0 ? 'inline-block' : 'none';
+                if (this.files.length > 0) {
+                    var reader = new FileReader();
+                    reader.onload = function(e) {
+                        preview.innerHTML = '<img src="' + e.target.result + '" alt="" style="max-width:120px;max-height:80px;object-fit:cover;border-radius:4px;border:1px solid #ddd;">';
+                    };
+                    reader.readAsDataURL(this.files[0]);
+                }
+            });
+
+            uploadBtn.addEventListener('click', async function() {
+                if (!fileInput.files.length) return;
+                var formData = new FormData();
+                formData.append('image', fileInput.files[0]);
+                try {
+                    var res = await fetch('/api/products/' + id + '/image', { method: 'POST', body: formData });
+                    var result = await res.json().catch(() => null);
+                    if (res.ok) {
+                        showToast('Image uploaded successfully', 'success');
+                    } else {
+                        showToast(result?.error || 'Upload failed', 'error');
+                    }
+                } catch(e) {
+                    showToast('Upload failed', 'error');
+                }
+            });
+        }, 100);
     }
-    
+
     async function deleteProduct(id) {
         if (!confirm('Are you sure you want to delete this product?')) return;
-        
+
         try {
             const response = await fetch(`/api/products/${id}`, { method: 'DELETE' });
+            const data = await response.json().catch(() => null);
             if (response.ok) {
                 showToast('Product deleted successfully', 'success');
                 loadProducts();
             } else {
-                throw new Error('Failed to delete product');
+                showToast(data?.error || 'Failed to delete product', 'error');
             }
         } catch (error) {
             showToast('Failed to delete product', 'error');
         }
     }
-    
-    loadProducts();
+
+    whenUserReady(function(role) {
+        userRole = role;
+        if (role === 'staff') {
+            document.getElementById('addProductBtn').style.display = 'none';
+        }
+        if (role === 'admin' || role === 'manager') {
+            document.getElementById('costBulkActions').style.display = 'inline';
+        }
+        loadProducts();
+    });
+
+    document.getElementById('costImportInput').addEventListener('change', async function() {
+        const file = this.files[0];
+        if (!file) return;
+        const formData = new FormData();
+        formData.append('file', file);
+        try {
+            const res = await fetch('/api/products/import-cost-prices', { method: 'POST', body: formData });
+            const result = await res.json().catch(() => null);
+            if (!res.ok) {
+                showToast(result?.error || 'Import failed', 'error');
+                return;
+            }
+            let summary = `${result.updated} updated, ${result.skipped_empty} skipped (empty)`;
+            if (result.errors.length) summary += `, ${result.errors.length} error(s)`;
+            if (result.warnings.length) summary += `, ${result.warnings.length} warning(s)`;
+            showToast(summary, result.errors.length ? 'warning' : 'success', 6000);
+
+            let modalBody = '<div style="text-align:center;padding:10px 0;font-size:15px;">' +
+                (result.errors.length || result.warnings.length
+                    ? 'Import completed with issues:'
+                    : 'All changes applied successfully.') + '</div>';
+            if (result.errors.length || result.warnings.length) {
+                modalBody += '<div style="max-height:250px;overflow-y:auto;font-size:13px;text-align:left;background:#f8f9fa;padding:10px;border-radius:6px;margin-top:8px;">';
+                result.errors.forEach(e => {
+                    modalBody += '<div style="color:#dc3545;padding:2px 0;">Row ' + e.row + ': ' + escapeHtml(e.reason) + '</div>';
+                });
+                result.warnings.forEach(w => {
+                    modalBody += '<div style="color:#e67e22;padding:2px 0;">Row ' + w.row + ': ' + escapeHtml(w.message) + '</div>';
+                });
+                modalBody += '</div>';
+            }
+            openModal('Import Results — ' + summary, modalBody, function() { closeModal(); });
+
+            loadProducts();
+        } catch (e) {
+            showToast('Import failed', 'error');
+        }
+        this.value = '';
+    });
 </script>
 {% endblock %}

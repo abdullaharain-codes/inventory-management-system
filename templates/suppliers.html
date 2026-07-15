@@ -4,15 +4,23 @@
 {% block page_title %}Suppliers Management{% endblock %}
 
 {% block content %}
-<div class="section-header">
-    <button class="btn-primary" onclick="showAddSupplierModal()">+ Add Supplier</button>
+<div id="accessDenied" style="display:none; text-align: center; padding: 60px 20px; background: #fff; border-radius: 12px;">
+    <div style="font-size: 48px; margin-bottom: 16px;">&#128274;</div>
+    <h2 style="font-size: 20px; color: #111827; margin-bottom: 8px;">Access Denied</h2>
+    <p style="color: #6b7280; font-size: 14px;">You do not have permission to access this page.</p>
 </div>
-
-<div id="suppliersContent">
-    <div style="text-align: center; padding: 40px;">Loading suppliers...</div>
+<div id="suppliersPageContent">
+    <div class="section-header">
+        <button class="btn-primary" onclick="showAddSupplierModal()">+ Add Supplier</button>
+    </div>
+    <div id="suppliersContent">
+        <div style="text-align: center; padding: 40px;">Loading suppliers...</div>
+    </div>
 </div>
 
 <script>
+    var userRole = 'staff';
+
     async function loadSuppliers() {
         try {
             const response = await fetch('/api/suppliers');
@@ -24,31 +32,38 @@
             showToast('Failed to load suppliers', 'error');
         }
     }
-    
+
     function renderSuppliersTable(suppliers) {
         if (suppliers.length === 0) {
             document.getElementById('suppliersContent').innerHTML = '<div style="text-align: center; padding: 40px; background: white; border-radius: 12px;">No suppliers found.</div>';
             return;
         }
-        
+
         const html = `
             <div class="table-container">
                 <table>
                     <thead>
-                        <tr><th>ID</th><th>Name</th><th>Contact Person</th><th>Phone</th><th>Email</th><th>Address</th><th>Actions</th></tr>
+                        <tr>
+                            <th>ID</th>
+                            <th>Name</th>
+                            <th>Email</th>
+                            <th>Phone</th>
+                            <th>Payment Terms</th>
+                            <th>Actions</th>
+                        </tr>
                     </thead>
                     <tbody>
                         ${suppliers.map(supplier => `
                             <tr>
                                 <td>${supplier.supplier_id}</td>
                                 <td>${escapeHtml(supplier.name)}</td>
-                                <td>${escapeHtml(supplier.contact_person || '-')}</td>
-                                <td>${escapeHtml(supplier.phone || '-')}</td>
                                 <td>${escapeHtml(supplier.email || '-')}</td>
-                                <td>${escapeHtml(supplier.address || '-')}</td>
+                                <td>${escapeHtml(supplier.phone || '-')}</td>
+                                <td>${escapeHtml(supplier.payment_terms || '-')}</td>
                                 <td>
-                                    <button class="btn-small" onclick="showEditSupplierModal(${supplier.supplier_id})">✏️ Edit</button>
-                                    <button class="btn-small btn-danger" onclick="deleteSupplier(${supplier.supplier_id})">🗑️ Delete</button>
+                                    <button class="btn-small" onclick="showSupplierDetail(${supplier.supplier_id})">&#128065; View</button>
+                                    <button class="btn-small" onclick="showEditSupplierModal(${supplier.supplier_id})">&#9998; Edit</button>
+                                    ${userRole === 'admin' ? `<button class="btn-small btn-danger" onclick="deleteSupplier(${supplier.supplier_id})">&#128465; Delete</button>` : ''}
                                 </td>
                             </tr>
                         `).join('')}
@@ -58,109 +73,220 @@
         `;
         document.getElementById('suppliersContent').innerHTML = html;
     }
-    
+
     function showAddSupplierModal() {
         const formHTML = `
             <form id="supplierForm">
                 <div class="form-group"><label>Name *</label><input type="text" id="name" required></div>
-                <div class="form-group"><label>Contact Person</label><input type="text" id="contact_person"></div>
-                <div class="form-group"><label>Phone</label><input type="text" id="phone"></div>
+                <div class="form-row">
+                    <div class="form-group"><label>Contact Person</label><input type="text" id="contact_person"></div>
+                    <div class="form-group"><label>Phone</label><input type="text" id="phone"></div>
+                </div>
                 <div class="form-group"><label>Email</label><input type="email" id="email"></div>
                 <div class="form-group"><label>Address</label><textarea id="address" rows="2"></textarea></div>
+                <div class="form-row">
+                    <div class="form-group"><label>Tax Registration Number</label><input type="text" id="tax_registration_number" placeholder="Optional"></div>
+                    <div class="form-group"><label>Payment Terms</label><input type="text" id="payment_terms" placeholder="e.g. Net 30, COD"></div>
+                </div>
+                <div class="form-group"><label>Notes</label><textarea id="notes" rows="2" placeholder="Optional notes about this supplier"></textarea></div>
             </form>
         `;
-        
+
         openModal('Add Supplier', formHTML, async () => {
             const data = {
-                name: document.getElementById('name').value,
-                contact_person: document.getElementById('contact_person').value,
-                phone: document.getElementById('phone').value,
-                email: document.getElementById('email').value,
-                address: document.getElementById('address').value
+                name: document.getElementById('name').value.trim(),
+                contact_person: document.getElementById('contact_person').value.trim(),
+                phone: document.getElementById('phone').value.trim(),
+                email: document.getElementById('email').value.trim(),
+                address: document.getElementById('address').value.trim(),
+                tax_registration_number: document.getElementById('tax_registration_number').value.trim() || null,
+                payment_terms: document.getElementById('payment_terms').value.trim() || null,
+                notes: document.getElementById('notes').value.trim() || null
             };
-            
+
             if (!data.name) {
                 showToast('Supplier name is required', 'error');
                 return;
             }
-            
+
             try {
                 const response = await fetch('/api/suppliers', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify(data)
                 });
+                const result = await response.json();
                 if (response.ok) {
                     showToast('Supplier added successfully', 'success');
                     closeModal();
                     loadSuppliers();
                 } else {
-                    throw new Error('Failed to add supplier');
+                    showToast(result.error || 'Failed to add supplier', 'error');
                 }
             } catch (error) {
                 showToast('Failed to add supplier', 'error');
             }
         });
     }
-    
+
     async function showEditSupplierModal(id) {
-        const suppliers = await fetch('/api/suppliers').then(r => r.json());
-        const supplier = suppliers.find(s => s.supplier_id === id);
-        
+        const response = await fetch(`/api/suppliers/${id}`);
+        const supplier = await response.json();
+
         const formHTML = `
             <form id="supplierForm">
                 <div class="form-group"><label>Name *</label><input type="text" id="name" value="${escapeHtml(supplier.name)}" required></div>
-                <div class="form-group"><label>Contact Person</label><input type="text" id="contact_person" value="${escapeHtml(supplier.contact_person || '')}"></div>
-                <div class="form-group"><label>Phone</label><input type="text" id="phone" value="${escapeHtml(supplier.phone || '')}"></div>
+                <div class="form-row">
+                    <div class="form-group"><label>Contact Person</label><input type="text" id="contact_person" value="${escapeHtml(supplier.contact_person || '')}"></div>
+                    <div class="form-group"><label>Phone</label><input type="text" id="phone" value="${escapeHtml(supplier.phone || '')}"></div>
+                </div>
                 <div class="form-group"><label>Email</label><input type="email" id="email" value="${escapeHtml(supplier.email || '')}"></div>
                 <div class="form-group"><label>Address</label><textarea id="address" rows="2">${escapeHtml(supplier.address || '')}</textarea></div>
+                <div class="form-row">
+                    <div class="form-group"><label>Tax Registration Number</label><input type="text" id="tax_registration_number" value="${escapeHtml(supplier.tax_registration_number || '')}" placeholder="Optional"></div>
+                    <div class="form-group"><label>Payment Terms</label><input type="text" id="payment_terms" value="${escapeHtml(supplier.payment_terms || '')}" placeholder="e.g. Net 30, COD"></div>
+                </div>
+                <div class="form-group"><label>Notes</label><textarea id="notes" rows="2" placeholder="Optional notes about this supplier">${escapeHtml(supplier.notes || '')}</textarea></div>
             </form>
         `;
-        
+
         openModal('Edit Supplier', formHTML, async () => {
             const data = {
-                name: document.getElementById('name').value,
-                contact_person: document.getElementById('contact_person').value,
-                phone: document.getElementById('phone').value,
-                email: document.getElementById('email').value,
-                address: document.getElementById('address').value
+                name: document.getElementById('name').value.trim(),
+                contact_person: document.getElementById('contact_person').value.trim(),
+                phone: document.getElementById('phone').value.trim(),
+                email: document.getElementById('email').value.trim(),
+                address: document.getElementById('address').value.trim(),
+                tax_registration_number: document.getElementById('tax_registration_number').value.trim() || null,
+                payment_terms: document.getElementById('payment_terms').value.trim() || null,
+                notes: document.getElementById('notes').value.trim() || null
             };
-            
+
             try {
                 const response = await fetch(`/api/suppliers/${id}`, {
                     method: 'PUT',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify(data)
                 });
+                const result = await response.json();
                 if (response.ok) {
                     showToast('Supplier updated successfully', 'success');
                     closeModal();
                     loadSuppliers();
                 } else {
-                    throw new Error('Failed to update supplier');
+                    showToast(result.error || 'Failed to update supplier', 'error');
                 }
             } catch (error) {
                 showToast('Failed to update supplier', 'error');
             }
         });
     }
-    
+
+    async function showSupplierDetail(id) {
+        try {
+            const [supplierRes, productsRes] = await Promise.all([
+                fetch(`/api/suppliers/${id}`),
+                fetch(`/api/suppliers/${id}/products`)
+            ]);
+            const supplier = await supplierRes.json();
+            const products = await productsRes.json();
+
+            const productsHtml = products.length > 0
+                ? products.map(p => `
+                    <tr>
+                        <td>${p.product_id}</td>
+                        <td>${escapeHtml(p.name)}</td>
+                        <td>${escapeHtml(p.category || '-')}</td>
+                        <td>₨${parseFloat(p.price).toFixed(2)}</td>
+                        <td>${p.stock_quantity}</td>
+                    </tr>
+                `).join('')
+                : '<tr><td colspan="5" style="text-align:center;color:#9ca3af;">No products assigned to this supplier.</td></tr>';
+
+            const formHTML = `
+                <div style="max-width:100%;">
+                    <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:16px;">
+                        <div><strong>Name:</strong> ${escapeHtml(supplier.name)}</div>
+                        <div><strong>Contact Person:</strong> ${escapeHtml(supplier.contact_person || '-')}</div>
+                        <div><strong>Email:</strong> ${escapeHtml(supplier.email || '-')}</div>
+                        <div><strong>Phone:</strong> ${escapeHtml(supplier.phone || '-')}</div>
+                        <div><strong>Address:</strong> ${escapeHtml(supplier.address || '-')}</div>
+                        <div><strong>Tax Reg. No.:</strong> ${escapeHtml(supplier.tax_registration_number || '-')}</div>
+                        <div><strong>Payment Terms:</strong> ${escapeHtml(supplier.payment_terms || '-')}</div>
+                        <div><strong>Created:</strong> ${supplier.created_at ? fmtDate(supplier.created_at) : '-'}</div>
+                    </div>
+                    ${supplier.notes ? `<div style="margin-bottom:16px;"><strong>Notes:</strong><br>${escapeHtml(supplier.notes)}</div>` : ''}
+
+                    <div style="border-top:1px solid #e5e7eb;padding-top:14px;margin-bottom:16px;">
+                        <h4 style="margin:0 0 8px 0;">Purchase History</h4>
+                        <div style="display:flex;gap:16px;flex-wrap:wrap;">
+                            <div style="background:#f9fafb;padding:10px 14px;border-radius:8px;flex:1;min-width:100px;text-align:center;">
+                                <div style="font-size:12px;color:#6b7280;">Total Orders</div>
+                                <div style="font-size:20px;font-weight:700;">${supplier.total_orders}</div>
+                            </div>
+                            <div style="background:#f9fafb;padding:10px 14px;border-radius:8px;flex:1;min-width:100px;text-align:center;">
+                                <div style="font-size:12px;color:#6b7280;">Total Spend</div>
+                                <div style="font-size:20px;font-weight:700;">₨${parseFloat(supplier.total_spend || 0).toFixed(2)}</div>
+                            </div>
+                            <div style="background:#f9fafb;padding:10px 14px;border-radius:8px;flex:1;min-width:100px;text-align:center;">
+                                <div style="font-size:12px;color:#6b7280;">Last Order</div>
+                                <div style="font-size:16px;font-weight:600;">${supplier.last_order_date ? fmtDate(supplier.last_order_date) : '—'}</div>
+                            </div>
+                        </div>
+                        <p style="font-size:12px;color:#9ca3af;margin-top:8px;text-align:center;">
+                            Purchase History — Coming Soon (Phase 7)
+                        </p>
+                    </div>
+
+                    <div style="border-top:1px solid #e5e7eb;padding-top:14px;">
+                        <h4 style="margin:0 0 8px 0;">Assigned Products (${products.length})</h4>
+                        <table style="width:100%;font-size:13px;">
+                            <thead>
+                                <tr>
+                                    <th>ID</th>
+                                    <th>Name</th>
+                                    <th>Category</th>
+                                    <th>Price</th>
+                                    <th>Stock</th>
+                                </tr>
+                            </thead>
+                            <tbody>${productsHtml}</tbody>
+                        </table>
+                    </div>
+                </div>
+            `;
+
+            openModal(`Supplier #${supplier.supplier_id} — ${escapeHtml(supplier.name)}`, formHTML, () => closeModal());
+        } catch (error) {
+            console.error('Error loading supplier detail:', error);
+            showToast('Failed to load supplier details', 'error');
+        }
+    }
+
     async function deleteSupplier(id) {
         if (!confirm('Are you sure you want to delete this supplier?')) return;
-        
+
         try {
             const response = await fetch(`/api/suppliers/${id}`, { method: 'DELETE' });
+            const result = await response.json();
             if (response.ok) {
                 showToast('Supplier deleted successfully', 'success');
                 loadSuppliers();
             } else {
-                throw new Error('Failed to delete supplier');
+                showToast(result.error || 'Failed to delete supplier', 'error');
             }
         } catch (error) {
             showToast('Failed to delete supplier', 'error');
         }
     }
-    
-    loadSuppliers();
+
+    whenUserReady(function(role) {
+        userRole = role;
+        if (role === 'staff') {
+            document.getElementById('suppliersPageContent').style.display = 'none';
+            document.getElementById('accessDenied').style.display = 'block';
+        }
+        loadSuppliers();
+    });
 </script>
 {% endblock %}

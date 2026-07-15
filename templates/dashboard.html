@@ -17,8 +17,11 @@ async function loadDashboard() {
             fetch('/api/sales').then(r => r.json())
         ]);
 
-        const lowStock = products.filter(p => p.stock_quantity < 10).slice(0, 10);
+        const lowStock = products.filter(p => p.stock_quantity <= (p.minimum_stock_threshold || 10)).slice(0, 10);
         const recentSales = sales.slice(0, 5);
+
+        var alertRes = await fetch('/api/inventory/alerts').then(function(r){ return r.json(); }).catch(function(){ return []; });
+        var alertCount = alertRes.length || 0;
 
         document.getElementById('dashboardContent').innerHTML = `
             <div class="stats-grid">
@@ -36,6 +39,13 @@ async function loadDashboard() {
                     </div>
                     <div class="stat-icon">🏭</div>
                 </div>
+                <div class="stat-card" style="cursor:pointer;" onclick="window.location.href='/inventory'">
+                    <div class="stat-info">
+                        <div class="stat-label">Active Alerts</div>
+                        <div class="stat-value" style="color:${alertCount > 0 ? '#dc2626' : '#16a34a'}">${alertCount}</div>
+                    </div>
+                    <div class="stat-icon">⚠️</div>
+                </div>
                 <div class="stat-card">
                     <div class="stat-info">
                         <div class="stat-label">Total Sales</div>
@@ -46,23 +56,24 @@ async function loadDashboard() {
                 <div class="stat-card">
                     <div class="stat-info">
                         <div class="stat-label">Total Revenue</div>
-                        <div class="stat-value">$${parseFloat(summary.total_revenue || 0).toLocaleString(undefined, {minimumFractionDigits: 2})}</div>
+                        <div class="stat-value">₨${parseFloat(summary.total_revenue || 0).toLocaleString('en-PK', {minimumFractionDigits: 2})}</div>
                     </div>
                     <div class="stat-icon">💵</div>
                 </div>
             </div>
 
             <div class="table-container">
-                <h3>⚠️ Low Stock Alert (Stock &lt; 10)</h3>
+                <h3>⚠️ Low Stock Alert</h3>
                 ${lowStock.length > 0 ? `
                 <table>
-                    <thead><tr><th>ID</th><th>Product</th><th>Stock</th><th>Category</th></tr></thead>
+                    <thead><tr><th>ID</th><th>Product</th><th>Stock</th><th>Threshold</th><th>Category</th></tr></thead>
                     <tbody>
                         ${lowStock.map(p => `
                         <tr class="low-stock">
                             <td>${p.product_id}</td>
                             <td>${escapeHtml(p.name)}</td>
                             <td><span class="badge-danger">${p.stock_quantity} units</span></td>
+                            <td>${p.minimum_stock_threshold || 10}</td>
                             <td>${escapeHtml(p.category || '-')}</td>
                         </tr>`).join('')}
                     </tbody>
@@ -80,8 +91,8 @@ async function loadDashboard() {
                             <td>${s.sale_id}</td>
                             <td>${escapeHtml(s.product_name)}</td>
                             <td>${s.quantity_sold}</td>
-                            <td>$${parseFloat(s.sale_price).toFixed(2)}</td>
-                            <td>$${parseFloat(s.total_amount).toFixed(2)}</td>
+                            <td>₨${parseFloat(s.sale_price).toLocaleString('en-PK', {minimumFractionDigits: 2})}</td>
+                            <td>₨${parseFloat(s.total_amount).toLocaleString('en-PK', {minimumFractionDigits: 2})}</td>
                             <td>${new Date(s.sale_date).toLocaleDateString()}</td>
                         </tr>`).join('')}
                     </tbody>

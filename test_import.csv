@@ -1,0 +1,6 @@
+product_id,name,sku,current_selling_price,cost_price
+1,Premium Notebook R7,OFFI-00001,999.99,250.50
+2,Elite Headphones Gen2,AUDI-00002,888.88,
+99999,Nonexistent,,100.00,50.00
+3,Advanced Pen Set V3,OFFI-00003,777.77,-10.00
+4,Wrong Name Here,FURN-00004,666.66,300.00

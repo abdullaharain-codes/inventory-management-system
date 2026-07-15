@@ -76,6 +76,7 @@
 
 <script>
     var allSales = [];
+    var userRole = 'staff';
 
     /* ── Tab Switch ──────────────────────────── */
     function switchSalesTab(tab) {
@@ -140,12 +141,13 @@
                   'onclick="viewBillFromSales(\'' + billNum + '\')">🧾 ' + billNum + '</button>'
                 : '<span style="color:#6b7280;font-size:0.85rem;">' + escapeHtml(notes || '—') + '</span>';
 
+            var canAdmin = userRole === 'admin';
             var actionsCell = isBilled
                 ? '<span style="font-size:0.8rem;color:#9ca3af;">via Billing</span>' +
-                  ' <button class="btn-small" style="background:#fef3c7;color:#92400e;border:1px solid #fbbf24;" ' +
-                  'onclick="showRefundFromSale(\'' + billNum + '\',' + sale.product_id + ')">↩️ Refund</button>'
-                : '<button class="btn-small" onclick="showEditSaleModal(' + sale.sale_id + ')">✏️ Edit</button>' +
-                  '<button class="btn-small btn-danger" onclick="deleteSale(' + sale.sale_id + ')">🗑️</button>';
+                  (canAdmin ? ' <button class="btn-small" style="background:#fef3c7;color:#92400e;border:1px solid #fbbf24;" ' +
+                  'onclick="showRefundFromSale(\'' + billNum + '\',' + sale.product_id + ')">↩️ Refund</button>' : '')
+                : (canAdmin ? '<button class="btn-small" onclick="showEditSaleModal(' + sale.sale_id + ')">✏️ Edit</button>' +
+                  '<button class="btn-small btn-danger" onclick="deleteSale(' + sale.sale_id + ')">🗑️</button>' : '<span style="font-size:0.8rem;color:#9ca3af;">View only</span>');
 
             return '<tr>' +
                 '<td>' + sale.sale_id + '</td>' +
@@ -390,6 +392,9 @@
         } catch(e) { showToast(e.message, 'error'); }
     }
 
-    loadSales();
+    whenUserReady(function(role) {
+        userRole = role;
+        loadSales();
+    });
 </script>
 {% endblock %}

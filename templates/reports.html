@@ -29,10 +29,16 @@
 </div>
 
 <!-- ─── TAB NAVIGATION ────────────────────────────────────────── -->
-<div style="display:flex;gap:0;margin-bottom:0;border-bottom:2px solid #e5e7eb;">
+<div style="display:flex;gap:0;margin-bottom:0;border-bottom:2px solid #e5e7eb;flex-wrap:wrap;">
     <button class="rp-tab active" data-tab="sales" onclick="rpSwitchTab('sales')">💰 Sales</button>
     <button class="rp-tab" data-tab="stock" onclick="rpSwitchTab('stock')">📦 Stock</button>
     <button class="rp-tab" data-tab="profit" onclick="rpSwitchTab('profit')">💵 Profit</button>
+    <button class="rp-tab" data-tab="lowstock" onclick="rpSwitchTab('lowstock')">⚠️ Low Stock</button>
+    <button class="rp-tab" data-tab="slowmoving" onclick="rpSwitchTab('slowmoving')">🐌 Slow Moving</button>
+    <button class="rp-tab" data-tab="deadstock" onclick="rpSwitchTab('deadstock')">💀 Dead Stock</button>
+    <button class="rp-tab" data-tab="purchases" onclick="rpSwitchTab('purchases')">🛒 Purchases</button>
+    <button class="rp-tab" data-tab="suppliers" onclick="rpSwitchTab('suppliers')">🏭 Suppliers</button>
+    <button class="rp-tab" data-tab="insights" onclick="rpSwitchTab('insights')">💡 Insights</button>
 </div>
 
 <!-- ─── SALES TAB ─────────────────────────────────────────────── -->
@@ -40,14 +46,24 @@
     <div id="rpSalesLoading" class="loading-msg">Loading sales report...</div>
     <div id="rpSalesContent" style="display:none;">
         <div class="stats-grid" id="rpSalesStats"></div>
-        <div style="display:grid;grid-template-columns:2fr 1fr;gap:16px;margin-bottom:18px;">
-            <div style="background:#fff;border-radius:10px;padding:18px;box-shadow:0 1px 3px rgba(0,0,0,0.08);">
-                <h3 style="font-size:14px;font-weight:600;margin-bottom:14px;color:#111827;">Revenue Over Time</h3>
+        <div class="rp-chart-row rp-chart-row-2">
+            <div class="rp-chart-card">
+                <h3>Revenue Over Time</h3>
                 <div style="position:relative;height:260px;"><canvas id="rpSalesLineChart"></canvas></div>
             </div>
-            <div style="background:#fff;border-radius:10px;padding:18px;box-shadow:0 1px 3px rgba(0,0,0,0.08);">
-                <h3 style="font-size:14px;font-weight:600;margin-bottom:14px;color:#111827;">Payment Methods</h3>
+            <div class="rp-chart-card">
+                <h3>Payment Methods</h3>
                 <div style="position:relative;height:260px;"><canvas id="rpSalesPieChart"></canvas></div>
+            </div>
+        </div>
+        <div class="rp-chart-row rp-chart-row-equal">
+            <div class="rp-chart-card">
+                <h3>📅 Busy Sales Days (Day of Week)</h3>
+                <div id="rpSalesDowHeatmap" style="min-height:180px;"></div>
+            </div>
+            <div class="rp-chart-card">
+                <h3>📆 Daily Orders (Last 30 Days)</h3>
+                <div id="rpSalesCalendarHeatmap" style="min-height:180px;overflow-x:auto;"></div>
             </div>
         </div>
         <div class="table-container" style="margin-bottom:18px;">
@@ -55,8 +71,11 @@
             <table><thead><tr><th>#</th><th>Product</th><th>Qty Sold</th><th>Revenue</th></tr></thead>
             <tbody id="rpSalesTopProducts"></tbody></table>
         </div>
-        <div style="text-align:right;margin-bottom:18px;">
-            <a id="rpSalesCsvBtn" href="#" class="btn-primary" style="text-decoration:none;display:inline-block;">⬇️ Download CSV</a>
+        <div style="text-align:right;margin-bottom:18px;display:flex;gap:6px;justify-content:flex-end;">
+            <a id="rpSalesCsvBtn" href="#" class="btn-primary" style="text-decoration:none;display:inline-block;font-size:12px;">⬇️ CSV</a>
+            <a id="rpSalesPdfBtn" href="#" class="btn-primary" style="text-decoration:none;display:inline-block;font-size:12px;background:#dc2626;">⬇️ PDF</a>
+            <a id="rpSalesExcelBtn" href="#" class="btn-primary" style="text-decoration:none;display:inline-block;font-size:12px;background:#16a34a;">⬇️ Excel</a>
+            <button onclick="window.print()" class="btn-primary" style="font-size:12px;background:#6b7280;">🖨️ Print</button>
         </div>
     </div>
     <div id="rpSalesEmpty" style="display:none;text-align:center;padding:40px;color:#6b7280;background:#fff;border-radius:10px;">No sales data for this period.</div>
@@ -66,14 +85,20 @@
 <div id="rpTabStock" class="rp-tab-panel" style="display:none;">
     <div id="rpStockLoading" class="loading-msg">Loading stock report...</div>
     <div id="rpStockContent" style="display:none;">
+        <div style="display:flex;gap:8px;align-items:center;margin-bottom:14px;flex-wrap:wrap;">
+            <label style="font-size:13px;color:#6b7280;font-weight:500;">Category:</label>
+            <select id="rpStockCategory" style="padding:7px 10px;border:1px solid #e5e7eb;border-radius:8px;font-size:13px;">
+                <option value="">All Categories</option>
+            </select>
+        </div>
         <div class="stats-grid" id="rpStockStats"></div>
-        <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:18px;">
-            <div style="background:#fff;border-radius:10px;padding:18px;box-shadow:0 1px 3px rgba(0,0,0,0.08);">
-                <h3 style="font-size:14px;font-weight:600;margin-bottom:14px;color:#111827;">Movement by Type</h3>
+        <div class="rp-chart-row rp-chart-row-equal">
+            <div class="rp-chart-card">
+                <h3>Movement by Type</h3>
                 <div style="position:relative;height:260px;"><canvas id="rpStockBarChart"></canvas></div>
             </div>
-            <div style="background:#fff;border-radius:10px;padding:18px;box-shadow:0 1px 3px rgba(0,0,0,0.08);">
-                <h3 style="font-size:14px;font-weight:600;margin-bottom:14px;color:#111827;">Stock Summary</h3>
+            <div class="rp-chart-card">
+                <h3>Stock Summary</h3>
                 <div id="rpStockSummaryInfo" style="font-size:13px;color:#6b7280;"></div>
             </div>
         </div>
@@ -82,8 +107,11 @@
             <table><thead><tr><th>Product</th><th>Opening</th><th>In</th><th>Out</th><th>Closing</th><th>Status</th></tr></thead>
             <tbody id="rpStockTable"></tbody></table>
         </div>
-        <div style="text-align:right;margin-bottom:18px;">
-            <a id="rpStockCsvBtn" href="#" class="btn-primary" style="text-decoration:none;display:inline-block;">⬇️ Download CSV</a>
+        <div style="text-align:right;margin-bottom:18px;display:flex;gap:6px;justify-content:flex-end;">
+            <a id="rpStockCsvBtn" href="#" class="btn-primary" style="text-decoration:none;display:inline-block;font-size:12px;">⬇️ CSV</a>
+            <a id="rpStockPdfBtn" href="#" class="btn-primary" style="text-decoration:none;display:inline-block;font-size:12px;background:#dc2626;">⬇️ PDF</a>
+            <a id="rpStockExcelBtn" href="#" class="btn-primary" style="text-decoration:none;display:inline-block;font-size:12px;background:#16a34a;">⬇️ Excel</a>
+            <button onclick="window.print()" class="btn-primary" style="font-size:12px;background:#6b7280;">🖨️ Print</button>
         </div>
     </div>
     <div id="rpStockEmpty" style="display:none;text-align:center;padding:40px;color:#6b7280;background:#fff;border-radius:10px;">No stock data for this period.</div>
@@ -94,8 +122,8 @@
     <div id="rpProfitLoading" class="loading-msg">Loading profit report...</div>
     <div id="rpProfitContent" style="display:none;">
         <div class="stats-grid" id="rpProfitStats"></div>
-        <div style="background:#fff;border-radius:10px;padding:18px;box-shadow:0 1px 3px rgba(0,0,0,0.08);margin-bottom:18px;">
-            <h3 style="font-size:14px;font-weight:600;margin-bottom:14px;color:#111827;">Top 10 Products by Profit</h3>
+        <div class="rp-chart-card" style="margin-bottom:18px;">
+            <h3>Top 10 Products by Profit</h3>
             <div style="position:relative;height:280px;"><canvas id="rpProfitBarChart"></canvas></div>
         </div>
         <div class="table-container" style="margin-bottom:18px;">
@@ -103,11 +131,177 @@
             <table><thead><tr><th>Product</th><th>Qty Sold</th><th>Revenue</th><th>Cost</th><th>Profit</th><th>Margin %</th></tr></thead>
             <tbody id="rpProfitTable"></tbody></table>
         </div>
-        <div style="text-align:right;margin-bottom:18px;">
-            <a id="rpProfitCsvBtn" href="#" class="btn-primary" style="text-decoration:none;display:inline-block;">⬇️ Download CSV</a>
+        <div style="text-align:right;margin-bottom:18px;display:flex;gap:6px;justify-content:flex-end;">
+            <a id="rpProfitCsvBtn" href="#" class="btn-primary" style="text-decoration:none;display:inline-block;font-size:12px;">⬇️ CSV</a>
+            <a id="rpProfitPdfBtn" href="#" class="btn-primary" style="text-decoration:none;display:inline-block;font-size:12px;background:#dc2626;">⬇️ PDF</a>
+            <a id="rpProfitExcelBtn" href="#" class="btn-primary" style="text-decoration:none;display:inline-block;font-size:12px;background:#16a34a;">⬇️ Excel</a>
+            <button onclick="window.print()" class="btn-primary" style="font-size:12px;background:#6b7280;">🖨️ Print</button>
         </div>
     </div>
     <div id="rpProfitEmpty" style="display:none;text-align:center;padding:40px;color:#6b7280;background:#fff;border-radius:10px;">No profit data for this period.</div>
+</div>
+
+<!-- ─── LOW STOCK PREDICTION TAB ─────────────────────────────── -->
+<div id="rpTabLowStock" class="rp-tab-panel" style="display:none;">
+    <div id="rpLowStockLoading" class="loading-msg">Loading low stock prediction...</div>
+    <div id="rpLowStockContent" style="display:none;">
+        <div class="stats-grid" id="rpLowStockStats"></div>
+        <div class="rp-chart-card" style="margin-bottom:18px;">
+            <h3>📉 Stock Levels — Top 10 Lowest</h3>
+            <div style="position:relative;height:300px;"><canvas id="rpLowStockHBar"></canvas></div>
+        </div>
+        <div class="table-container" style="margin-bottom:18px;">
+            <h3 style="font-size:14px;font-weight:600;margin-bottom:12px;">⚠️ Products at Risk — Estimated Days to Stock-Out</h3>
+            <table><thead><tr><th>Product</th><th>Current Stock</th><th>Threshold</th><th>Avg Daily Sales</th><th>Est. Days Remaining</th></tr></thead>
+            <tbody id="rpLowStockTable"></tbody></table>
+        </div>
+    </div>
+    <div id="rpLowStockEmpty" style="display:none;text-align:center;padding:40px;color:#6b7280;background:#fff;border-radius:10px;">All products have sufficient stock.</div>
+    <div id="rpLowStockExport" class="rp-export-row" style="display:none;">
+        <a id="rpLowStockPdfBtn" href="#" class="btn-primary" style="text-decoration:none;display:inline-block;font-size:12px;background:#dc2626;">⬇️ PDF</a>
+        <a id="rpLowStockExcelBtn" href="#" class="btn-primary" style="text-decoration:none;display:inline-block;font-size:12px;background:#16a34a;">⬇️ Excel</a>
+        <button onclick="window.print()" class="btn-primary" style="font-size:12px;background:#6b7280;">🖨️ Print</button>
+    </div>
+</div>
+
+<!-- ─── SLOW MOVING PRODUCTS TAB ─────────────────────────────── -->
+<div id="rpTabSlowMoving" class="rp-tab-panel" style="display:none;">
+    <div id="rpSlowMovingLoading" class="loading-msg">Loading slow moving products...</div>
+    <div id="rpSlowMovingContent" style="display:none;">
+        <div style="display:flex;gap:8px;align-items:center;margin-bottom:16px;">
+            <label style="font-size:13px;color:#6b7280;font-weight:500;">No sale in:</label>
+            <select id="rpSlowMovingDays" style="padding:7px 10px;border:1px solid #e5e7eb;border-radius:8px;font-size:13px;" onchange="rpLoadSlowMoving()">
+                <option value="30">30 days</option>
+                <option value="60">60 days</option>
+                <option value="90">90 days</option>
+            </select>
+        </div>
+        <div class="stats-grid" id="rpSlowMovingStats"></div>
+        <div class="table-container" style="margin-bottom:18px;">
+            <h3 style="font-size:14px;font-weight:600;margin-bottom:12px;">🐌 Slow Moving Products</h3>
+            <table><thead><tr><th>Product</th><th>Last Sale Date</th><th>Days Since Sale</th><th>Current Stock</th></tr></thead>
+            <tbody id="rpSlowMovingTable"></tbody></table>
+        </div>
+    </div>
+    <div id="rpSlowMovingEmpty" style="display:none;text-align:center;padding:40px;color:#6b7280;background:#fff;border-radius:10px;">All products sold recently.</div>
+    <div id="rpSlowMovingExport" class="rp-export-row" style="display:none;">
+        <a id="rpSlowMovingPdfBtn" href="#" class="btn-primary" style="text-decoration:none;display:inline-block;font-size:12px;background:#dc2626;">⬇️ PDF</a>
+        <a id="rpSlowMovingExcelBtn" href="#" class="btn-primary" style="text-decoration:none;display:inline-block;font-size:12px;background:#16a34a;">⬇️ Excel</a>
+        <button onclick="window.print()" class="btn-primary" style="font-size:12px;background:#6b7280;">🖨️ Print</button>
+    </div>
+</div>
+
+<!-- ─── DEAD STOCK TAB ────────────────────────────────────────── -->
+<div id="rpTabDeadStock" class="rp-tab-panel" style="display:none;">
+    <div id="rpDeadStockLoading" class="loading-msg">Loading dead stock report...</div>
+    <div id="rpDeadStockContent" style="display:none;">
+        <div class="stats-grid" id="rpDeadStockStats"></div>
+        <div class="table-container" style="margin-bottom:18px;">
+            <h3 style="font-size:14px;font-weight:600;margin-bottom:12px;">💀 Dead Stock — Unsold for 90+ Days</h3>
+            <table><thead><tr><th>Product</th><th>Days Since Sale</th><th>Stock Qty</th><th>Unit Price</th><th>Inventory Value</th></tr></thead>
+            <tbody id="rpDeadStockTable"></tbody></table>
+        </div>
+    </div>
+    <div id="rpDeadStockEmpty" style="display:none;text-align:center;padding:40px;color:#6b7280;background:#fff;border-radius:10px;">No dead stock found.</div>
+    <div id="rpDeadStockExport" class="rp-export-row" style="display:none;">
+        <a id="rpDeadStockPdfBtn" href="#" class="btn-primary" style="text-decoration:none;display:inline-block;font-size:12px;background:#dc2626;">⬇️ PDF</a>
+        <a id="rpDeadStockExcelBtn" href="#" class="btn-primary" style="text-decoration:none;display:inline-block;font-size:12px;background:#16a34a;">⬇️ Excel</a>
+        <button onclick="window.print()" class="btn-primary" style="font-size:12px;background:#6b7280;">🖨️ Print</button>
+    </div>
+</div>
+
+<!-- ─── PURCHASES TAB ──────────────────────────────────────────── -->
+<div id="rpTabPurchases" class="rp-tab-panel" style="display:none;">
+    <div id="rpPurchasesLoading" class="loading-msg">Loading purchase report...</div>
+    <div id="rpPurchasesContent" style="display:none;">
+        <div style="display:flex;gap:8px;align-items:center;margin-bottom:14px;flex-wrap:wrap;">
+            <label style="font-size:13px;color:#6b7280;font-weight:500;">Category:</label>
+            <select id="rpPurchasesCategory" style="padding:7px 10px;border:1px solid #e5e7eb;border-radius:8px;font-size:13px;">
+                <option value="">All Categories</option>
+            </select>
+            <label style="font-size:13px;color:#6b7280;font-weight:500;margin-left:8px;">Supplier:</label>
+            <select id="rpPurchasesSupplier" style="padding:7px 10px;border:1px solid #e5e7eb;border-radius:8px;font-size:13px;">
+                <option value="">All Suppliers</option>
+            </select>
+        </div>
+        <div class="stats-grid" id="rpPurchasesStats"></div>
+        <div class="rp-chart-row rp-chart-row-equal" style="margin-bottom:18px;">
+            <div class="rp-chart-card">
+                <h3>🏭 Supplier-wise (This Month)</h3>
+                <table><thead><tr><th>Supplier</th><th>Orders</th><th>Total Value</th></tr></thead>
+                <tbody id="rpPurchasesSupplierTable"></tbody></table>
+            </div>
+            <div class="rp-chart-card">
+                <h3>📂 Category-wise (This Month)</h3>
+                <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;">
+                    <div style="position:relative;height:240px;"><canvas id="rpPurchasesPieChart"></canvas></div>
+                    <div><table><thead><tr><th>Category</th><th>Value</th></tr></thead>
+                    <tbody id="rpPurchasesCategoryTable"></tbody></table></div>
+                </div>
+            </div>
+        </div>
+        <div class="table-container" style="margin-bottom:18px;">
+            <h3 style="font-size:14px;font-weight:600;margin-bottom:12px;">📊 Overall Purchase Order Summary</h3>
+            <div id="rpPurchasesOverallInfo" style="font-size:13px;color:#6b7280;"></div>
+        </div>
+    </div>
+    <div id="rpPurchasesEmpty" style="display:none;text-align:center;padding:40px;color:#6b7280;background:#fff;border-radius:10px;">No purchase data found.</div>
+    <div id="rpPurchasesExport" class="rp-export-row" style="display:none;">
+        <a id="rpPurchasesPdfBtn" href="#" class="btn-primary" style="text-decoration:none;display:inline-block;font-size:12px;background:#dc2626;">⬇️ PDF</a>
+        <a id="rpPurchasesExcelBtn" href="#" class="btn-primary" style="text-decoration:none;display:inline-block;font-size:12px;background:#16a34a;">⬇️ Excel</a>
+        <button onclick="window.print()" class="btn-primary" style="font-size:12px;background:#6b7280;">🖨️ Print</button>
+    </div>
+</div>
+
+<!-- ─── SUPPLIERS TAB ──────────────────────────────────────────── -->
+<div id="rpTabSuppliers" class="rp-tab-panel" style="display:none;">
+    <div id="rpSuppliersLoading" class="loading-msg">Loading supplier report...</div>
+    <div id="rpSuppliersContent" style="display:none;">
+        <div style="display:flex;gap:8px;align-items:center;margin-bottom:14px;flex-wrap:wrap;">
+            <label style="font-size:13px;color:#6b7280;font-weight:500;">Supplier:</label>
+            <select id="rpSuppliersFilter" style="padding:7px 10px;border:1px solid #e5e7eb;border-radius:8px;font-size:13px;">
+                <option value="">All Suppliers</option>
+            </select>
+        </div>
+        <div class="stats-grid" id="rpSuppliersStats"></div>
+        <div class="table-container" style="margin-bottom:18px;">
+            <h3>🏭 Supplier Performance Overview</h3>
+            <table><thead><tr><th>Supplier</th><th>Contact</th><th>Total Orders</th><th>Pending</th><th>Total Value</th><th>Last Order</th></tr></thead>
+            <tbody id="rpSuppliersTable"></tbody></table>
+        </div>
+    </div>
+    <div id="rpSuppliersEmpty" style="display:none;text-align:center;padding:40px;color:#6b7280;background:#fff;border-radius:10px;">No supplier data found.</div>
+    <div id="rpSuppliersExport" class="rp-export-row" style="display:none;">
+        <a id="rpSuppliersPdfBtn" href="#" class="btn-primary" style="text-decoration:none;display:inline-block;font-size:12px;background:#dc2626;">⬇️ PDF</a>
+        <a id="rpSuppliersExcelBtn" href="#" class="btn-primary" style="text-decoration:none;display:inline-block;font-size:12px;background:#16a34a;">⬇️ Excel</a>
+        <button onclick="window.print()" class="btn-primary" style="font-size:12px;background:#6b7280;">🖨️ Print</button>
+    </div>
+</div>
+
+<!-- ─── INSIGHTS TAB ───────────────────────────────────────────── -->
+<div id="rpTabInsights" class="rp-tab-panel" style="display:none;">
+    <div id="rpInsightsLoading" class="loading-msg">Generating insights...</div>
+    <div id="rpInsightsContent" style="display:none;">
+        <div class="rp-chart-card" style="margin-bottom:18px;">
+            <h3>💡 Smart Insights</h3>
+            <p style="font-size:12px;color:#6b7280;margin:0 0 16px 0;">Rule-based analysis of your business data. Insights update automatically.</p>
+            <div id="rpInsightsSalesSection" style="display:none;">
+                <div class="rp-insights-section-title">📈 Sales Insights</div>
+                <div id="rpInsightsSalesList" class="rp-insights-list"></div>
+            </div>
+            <div id="rpInsightsStockSection" style="display:none;">
+                <div class="rp-insights-section-title">📦 Stock Insights</div>
+                <div id="rpInsightsStockList" class="rp-insights-list"></div>
+            </div>
+            <div id="rpInsightsCustomersSection" style="display:none;">
+                <div class="rp-insights-section-title">👥 Customer Insights</div>
+                <div id="rpInsightsCustomersList" class="rp-insights-list"></div>
+            </div>
+        </div>
+    </div>
+    <div id="rpInsightsEmpty" style="display:none;text-align:center;padding:40px;color:#6b7280;background:#fff;border-radius:10px;">
+        Not enough data yet to generate insights &mdash; insights will appear here as more sales and stock data builds up.
+    </div>
 </div>
 
 </div>
@@ -138,6 +332,16 @@
 }
 .rp-quick-btn:hover { background: #e5e7eb; }
 .rp-quick-btn.active { background: #1e293b; color: #fff; border-color: #1e293b; }
+.rp-export-row { display:flex; gap:6px; justify-content:flex-end; text-align:right; margin-bottom:18px; }
+@media print {
+    .rp-tab, #reportsPage > div:first-child, .btn-primary, .rp-quick-btn,
+    #rpStockCategory, #rpPurchasesCategory, #rpPurchasesSupplier, #rpSuppliersFilter,
+    nav, .sidebar, .topbar, .no-print { display: none !important; }
+    .rp-tab-panel { display: block !important; page-break-inside: avoid; }
+    body { background: white !important; }
+    .table-container { page-break-inside: avoid; }
+    .rp-chart-card { page-break-inside: avoid; }
+}
 </style>
 {% endblock %}
 
@@ -149,15 +353,65 @@
     var chartSalesPie  = null;
     var chartStockBar  = null;
     var chartProfitBar = null;
+    var chartLowStockHBar = null;
+    var chartPurchasesPie = null;
 
     var currentTab = 'sales';
     var lastSalesData  = null;
     var lastStockData  = null;
     var lastProfitData = null;
+    var lastLowStockData   = null;
+    var lastSlowMovingData = null;
+    var lastDeadStockData  = null;
+    var lastPurchasesData  = null;
+    var lastSuppliersData  = null;
+    var lastInsightsData   = null;
+
+    /* ── Category & Supplier filter data ── */
+    var categoriesLoaded = false;
+    var suppliersLoaded = false;
+
+    function loadCategories(selectId) {
+        if (categoriesLoaded) return;
+        fetch('/api/categories').then(function(r) { return r.json(); }).then(function(data) {
+            var cats = data.categories || data || [];
+            if (!Array.isArray(cats)) cats = [];
+            [selectId || 'rpStockCategory', 'rpPurchasesCategory'].forEach(function(id) {
+                var sel = document.getElementById(id);
+                if (!sel) return;
+                cats.forEach(function(c) {
+                    var opt = document.createElement('option');
+                    opt.value = c.category_id;
+                    opt.textContent = c.name;
+                    sel.appendChild(opt);
+                });
+            });
+            categoriesLoaded = true;
+        }).catch(function() {});
+    }
+
+    function loadSuppliers(selectId) {
+        if (suppliersLoaded) return;
+        fetch('/api/suppliers').then(function(r) { return r.json(); }).then(function(data) {
+            var sups = data.suppliers || data || [];
+            if (!Array.isArray(sups)) sups = [];
+            [selectId || 'rpPurchasesSupplier', 'rpSuppliersFilter'].forEach(function(id) {
+                var sel = document.getElementById(id);
+                if (!sel) return;
+                sups.forEach(function(s) {
+                    var opt = document.createElement('option');
+                    opt.value = s.supplier_id;
+                    opt.textContent = s.name;
+                    sel.appendChild(opt);
+                });
+            });
+            suppliersLoaded = true;
+        }).catch(function() {});
+    }
 
     /* ── Helpers ── */
     function fmt(n) {
-        return '\u20A6' + parseFloat(n || 0).toLocaleString('en-PK', {minimumFractionDigits: 2, maximumFractionDigits: 2});
+        return 'Rs. ' + parseFloat(n || 0).toLocaleString('en-PK', {minimumFractionDigits: 2, maximumFractionDigits: 2});
     }
     function fmtInt(n) {
         return parseFloat(n || 0).toLocaleString('en-PK');
@@ -204,9 +458,25 @@
         document.querySelectorAll('.rp-tab').forEach(function(el) {
             el.classList.toggle('active', el.getAttribute('data-tab') === tab);
         });
-        document.getElementById('rpTabSales').style.display  = tab === 'sales'  ? '' : 'none';
-        document.getElementById('rpTabStock').style.display  = tab === 'stock'  ? '' : 'none';
-        document.getElementById('rpTabProfit').style.display = tab === 'profit' ? '' : 'none';
+        ['Sales','Stock','Profit','LowStock','SlowMoving','DeadStock','Purchases','Suppliers','Insights'].forEach(function(t) {
+            var el = document.getElementById('rpTab' + t);
+            if (el) el.style.display = '';
+        });
+        var tabMap = { sales:'rpTabSales', stock:'rpTabStock', profit:'rpTabProfit',
+                       lowstock:'rpTabLowStock', slowmoving:'rpTabSlowMoving', deadstock:'rpTabDeadStock',
+                       purchases:'rpTabPurchases', suppliers:'rpTabSuppliers', insights:'rpTabInsights' };
+        Object.keys(tabMap).forEach(function(k) {
+            var el = document.getElementById(tabMap[k]);
+            if (el) el.style.display = k === tab ? '' : 'none';
+        });
+
+        /* Load intelligence tabs on first visit */
+        if (tab === 'lowstock' && !lastLowStockData)  rpLoadLowStock();
+        if (tab === 'slowmoving' && !lastSlowMovingData) rpLoadSlowMoving();
+        if (tab === 'deadstock' && !lastDeadStockData) rpLoadDeadStock();
+        if (tab === 'purchases' && !lastPurchasesData) rpLoadPurchases();
+        if (tab === 'suppliers' && !lastSuppliersData) rpLoadSuppliers();
+        if (tab === 'insights' && !lastInsightsData) rpLoadInsights();
     };
 
     /* ── Apply Filters ── */
@@ -227,9 +497,11 @@
         });
 
         var params = 'date_from=' + dateFrom + '&date_to=' + dateTo;
+        var stockCat = document.getElementById('rpStockCategory').value;
+        var stockParams = params + (stockCat ? '&category_id=' + stockCat : '');
         Promise.all([
             fetch('/api/reports/sales?' + params + '&granularity=' + gran).then(function(r) { return r.json(); }),
-            fetch('/api/reports/stock?' + params).then(function(r) { return r.json(); }),
+            fetch('/api/reports/stock?' + stockParams).then(function(r) { return r.json(); }),
             fetch('/api/reports/profit?' + params).then(function(r) { return r.json(); })
         ]).then(function(results) {
             lastSalesData  = results[0];
@@ -278,12 +550,19 @@
         var dt = document.getElementById('rpTo').value;
         document.getElementById('rpSalesCsvBtn').href =
             '/api/reports/sales/csv?date_from=' + df + '&date_to=' + dt + '&granularity=' + gp;
+        document.getElementById('rpSalesPdfBtn').href =
+            '/api/reports/sales/pdf?date_from=' + df + '&date_to=' + dt + '&granularity=' + gp;
+        document.getElementById('rpSalesExcelBtn').href =
+            '/api/reports/sales/excel?date_from=' + df + '&date_to=' + dt + '&granularity=' + gp;
 
         /* Line chart: revenue over time */
         renderSalesLineChart(ts);
 
         /* Pie chart: payment methods */
         renderSalesPieChart(pm);
+
+        /* Heatmaps: busy days + calendar */
+        renderSalesHeatmaps(ts);
 
         /* Top products table */
         var tbody = document.getElementById('rpSalesTopProducts');
@@ -321,7 +600,7 @@
                 maintainAspectRatio: false,
                 plugins: { legend: { display: false } },
                 scales: {
-                    y: { beginAtZero: true, ticks: { callback: function(v) { return '\u20A6' + (v >= 1000 ? (v/1000).toFixed(0) + 'k' : v); } } }
+                    y: { beginAtZero: true, ticks: { callback: function(v) { return 'Rs. ' + (v >= 1000 ? (v/1000).toFixed(0) + 'k' : v); } } }
                 }
             }
         });
@@ -349,6 +628,127 @@
                 }
             }
         });
+    }
+
+    function renderSalesHeatmaps(ts) {
+        var dowContainer = document.getElementById('rpSalesDowHeatmap');
+        var calContainer = document.getElementById('rpSalesCalendarHeatmap');
+        if (!dowContainer || !calContainer) return;
+        if (!ts || !ts.length) {
+            dowContainer.innerHTML = '<p style="text-align:center;color:#6b7280;padding:20px;">No data</p>';
+            calContainer.innerHTML = '<p style="text-align:center;color:#6b7280;padding:20px;">No data</p>';
+            return;
+        }
+
+        /* Aggregate by day of week (0=Sun..6=Sat) and by date */
+        var dowNames = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
+        var dowCounts = [0,0,0,0,0,0,0];
+        var dateDayMap = {};
+        ts.forEach(function(r) {
+            var d = new Date(r.period_label);
+            if (!isNaN(d)) {
+                var day = d.getDay();
+                var count = parseInt(r.bill_count || 0);
+                dowCounts[day] += count;
+                dateDayMap[r.period_label] = count;
+            }
+        });
+        var maxDow = Math.max.apply(null, dowCounts) || 1;
+
+        function heatColor(val, max) {
+            var ratio = val / max;
+            if (ratio === 0) return '#f3f4f6';
+            if (ratio < 0.25) return '#dcfce7';
+            if (ratio < 0.5) return '#86efac';
+            if (ratio < 0.75) return '#22c55e';
+            return '#15803d';
+        }
+
+        /* ── Build calendar data (needed for active-days count) ── */
+        var today = new Date();
+        today.setHours(0,0,0,0);
+        var calDates = [];
+        for (var i = 29; i >= 0; i--) {
+            var d = new Date();
+            d.setDate(d.getDate() - i);
+            d.setHours(0,0,0,0);
+            var key = d.getFullYear() + '-' + String(d.getMonth()+1).padStart(2,'0') + '-' + String(d.getDate()).padStart(2,'0');
+            calDates.push({
+                key: key,
+                count: dateDayMap[key] || 0,
+                dayNum: d.getDate(),
+                dow: d.getDay(),
+                isFuture: d > today
+            });
+        }
+        var maxCal = Math.max.apply(null, calDates.map(function(d){ return d.count; })) || 1;
+        var activeDays = 0;
+        calDates.forEach(function(d) { if (d.count > 0) activeDays++; });
+
+        /* ── Day-of-week heatmap ── */
+        var dowHtml = '<div class="heatmap-subtitle">Total orders per weekday (last 30 days)</div>';
+        dowHtml += '<div class="heatmap-grid" style="grid-template-columns:repeat(7,1fr);gap:4px;max-width:400px;">';
+        for (var i = 0; i < 7; i++) {
+            dowHtml += '<div class="heatmap-label">' + dowNames[i] + '</div>';
+        }
+        for (var i = 0; i < 7; i++) {
+            var cnt = dowCounts[i];
+            dowHtml += '<div class="heatmap-cell" style="background:' + heatColor(cnt, maxDow) + ';aspect-ratio:1/1.2;flex-direction:column;gap:1px;" title="' + dowNames[i] + ': ' + cnt + ' orders">' +
+                '<span style="font-size:10px;color:#6b7280;">' + dowNames[i] + '</span>' +
+                '<span style="font-size:13px;font-weight:600;">' + cnt + '</span>' +
+                '</div>';
+        }
+        dowHtml += '</div>';
+        dowHtml += '<div class="heatmap-legend"><span>Fewer orders</span>';
+        ['#f3f4f6','#dcfce7','#86efac','#22c55e','#15803d'].forEach(function(c) {
+            dowHtml += '<div class="heatmap-legend-cell" style="background:' + c + ';"></div>';
+        });
+        dowHtml += '<span>More orders</span></div>';
+        if (activeDays < 10) {
+            dowHtml += '<div class="heatmap-note">Showing data from ' + activeDays + ' active day(s) in the last 30 days \u2014 this view will fill in as more sales data accumulates.</div>';
+        }
+        dowContainer.innerHTML = dowHtml;
+
+        /* ── Calendar heatmap (7-column weekly-aligned grid) ── */
+        var firstDow = calDates[0].dow;
+        var calHtml = '<div class="heatmap-subtitle">Orders per day \u2014 last 30 days</div>';
+        calHtml += '<div class="heatmap-grid" style="grid-template-columns:repeat(7,1fr);gap:3px;max-width:420px;">';
+        for (var i = 0; i < 7; i++) {
+            calHtml += '<div class="heatmap-label">' + dowNames[i] + '</div>';
+        }
+        for (var i = 0; i < firstDow; i++) {
+            calHtml += '<div></div>';
+        }
+        calDates.forEach(function(d) {
+            var bg, tc;
+            if (d.isFuture) {
+                bg = '#f8fafc'; tc = '#cbd5e1';
+            } else if (d.count > 0) {
+                bg = heatColor(d.count, maxCal); tc = '#111827';
+            } else {
+                bg = '#f3f4f6'; tc = '#9ca3af';
+            }
+            calHtml += '<div class="heatmap-cell" style="background:' + bg + ';flex-direction:column;gap:0;" title="' + d.key + ': ' + d.count + ' orders">' +
+                '<span style="font-size:10px;color:' + tc + ';">' + d.dayNum + '</span>' +
+                (d.count > 0 ? '<span style="font-size:9px;font-weight:600;color:' + tc + ';">' + d.count + '</span>' : '') +
+                '</div>';
+        });
+        var lastDow = calDates[calDates.length - 1].dow;
+        for (var i = lastDow + 1; i < 7; i++) {
+            calHtml += '<div></div>';
+        }
+        calHtml += '</div>';
+        calHtml += '<div class="heatmap-legend"><span>Fewer orders</span>';
+        ['#f3f4f6','#dcfce7','#86efac','#22c55e','#15803d'].forEach(function(c) {
+            calHtml += '<div class="heatmap-legend-cell" style="background:' + c + ';"></div>';
+        });
+        calHtml += '<span>More orders</span>';
+        calHtml += '<span style="margin-left:8px;"></span><div class="heatmap-legend-cell" style="background:#f8fafc;border:1px solid #e2e8f0;"></div><span>Upcoming</span>';
+        calHtml += '</div>';
+        if (activeDays < 10) {
+            calHtml += '<div class="heatmap-note">Showing data from ' + activeDays + ' active day(s) in the last 30 days \u2014 this view will fill in as more sales data accumulates.</div>';
+        }
+        calContainer.innerHTML = calHtml;
     }
 
     /* ══════════════════════════════════════════════════════════════
@@ -382,8 +782,14 @@
         /* CSV button */
         var df = document.getElementById('rpFrom').value;
         var dt = document.getElementById('rpTo').value;
+        var stockCat = document.getElementById('rpStockCategory').value;
+        var stockCatParam = stockCat ? '&category_id=' + stockCat : '';
         document.getElementById('rpStockCsvBtn').href =
-            '/api/reports/stock/csv?date_from=' + df + '&date_to=' + dt;
+            '/api/reports/stock/csv?date_from=' + df + '&date_to=' + dt + stockCatParam;
+        document.getElementById('rpStockPdfBtn').href =
+            '/api/reports/stock/pdf?date_from=' + df + '&date_to=' + dt + stockCatParam;
+        document.getElementById('rpStockExcelBtn').href =
+            '/api/reports/stock/excel?date_from=' + df + '&date_to=' + dt + stockCatParam;
 
         /* Bar chart: movement breakdown */
         renderStockBarChart(mb);
@@ -471,6 +877,10 @@
         var dt = document.getElementById('rpTo').value;
         document.getElementById('rpProfitCsvBtn').href =
             '/api/reports/profit/csv?date_from=' + df + '&date_to=' + dt;
+        document.getElementById('rpProfitPdfBtn').href =
+            '/api/reports/profit/pdf?date_from=' + df + '&date_to=' + dt;
+        document.getElementById('rpProfitExcelBtn').href =
+            '/api/reports/profit/excel?date_from=' + df + '&date_to=' + dt;
 
         /* Bar chart: top 10 by profit */
         renderProfitBarChart(bp);
@@ -522,7 +932,7 @@
                 maintainAspectRatio: false,
                 plugins: { legend: { position: 'top', labels: { font: { size: 12 } } } },
                 scales: {
-                    y: { beginAtZero: true, ticks: { callback: function(v) { return '\u20A6' + (v >= 1000 ? (v/1000).toFixed(0) + 'k' : v); } } },
+                    y: { beginAtZero: true, ticks: { callback: function(v) { return 'Rs. ' + (v >= 1000 ? (v/1000).toFixed(0) + 'k' : v); } } },
                     x: { ticks: { font: { size: 11 } } }
                 }
             }
@@ -539,13 +949,441 @@
             '<div class="stat-icon">' + (icon || '') + '</div></div>';
     }
 
+    function renderLowStockHBar(products) {
+        if (chartLowStockHBar) { chartLowStockHBar.destroy(); chartLowStockHBar = null; }
+        var canvas = document.getElementById('rpLowStockHBar');
+        if (!canvas || !products.length) return;
+        var top10 = products.slice(0, 10);
+        chartLowStockHBar = new Chart(canvas, {
+            type: 'bar',
+            data: {
+                labels: top10.map(function(p) { return p.product_name; }),
+                datasets: [{
+                    label: 'Current Stock',
+                    data: top10.map(function(p) { return parseInt(p.stock_quantity || 0); }),
+                    backgroundColor: top10.map(function(p) {
+                        var days = p.est_days_remaining;
+                        if (days !== null && days < 3) return '#ef4444';
+                        if (days !== null && days < 7) return '#f59e0b';
+                        return '#3b82f6';
+                    }),
+                    borderRadius: 4
+                }]
+            },
+            options: {
+                indexAxis: 'y',
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: { legend: { display: false } },
+                scales: { x: { beginAtZero: true } }
+            }
+        });
+    }
+
+    /* ══════════════════════════════════════════════════════════════
+       LOW STOCK PREDICTION TAB
+       ══════════════════════════════════════════════════════════════ */
+    window.rpLoadLowStock = function() {
+        var loading = document.getElementById('rpLowStockLoading');
+        var content = document.getElementById('rpLowStockContent');
+        var empty   = document.getElementById('rpLowStockEmpty');
+        var exportDiv = document.getElementById('rpLowStockExport');
+        loading.style.display = ''; content.style.display = 'none'; empty.style.display = 'none'; exportDiv.style.display = 'none';
+
+        fetch('/api/reports/low-stock-prediction').then(function(r) {
+            if (!r.ok) { return r.json().then(function(err) { throw new Error(err.error || 'Failed to load report data'); }); }
+            return r.json();
+        }).then(function(data) {
+            loading.style.display = 'none';
+            var products = data.products || [];
+            lastLowStockData = data;
+
+            if (!products.length) { empty.style.display = ''; content.style.display = 'none'; return; }
+            empty.style.display = 'none'; content.style.display = ''; exportDiv.style.display = 'flex';
+            document.getElementById('rpLowStockPdfBtn').href = '/api/reports/low-stock-prediction/pdf';
+            document.getElementById('rpLowStockExcelBtn').href = '/api/reports/low-stock-prediction/excel';
+
+            var urgent = products.filter(function(p) { return p.est_days_remaining !== null && p.est_days_remaining < 3; }).length;
+            var warning = products.filter(function(p) { return p.est_days_remaining !== null && p.est_days_remaining >= 3 && p.est_days_remaining < 7; }).length;
+            var noSales = products.filter(function(p) { return p.est_days_remaining === null; }).length;
+
+            document.getElementById('rpLowStockStats').innerHTML =
+                statCard('Products at Risk', products.length, '\u26A0\uFE0F') +
+                statCard('Urgent (< 3 days)', urgent, '\uD83D\uDD34', urgent > 0 ? 'color:#dc2626;' : '') +
+                statCard('Warning (< 7 days)', warning, '\uD83D\uDFE0', warning > 0 ? 'color:#f59e0b;' : '') +
+                statCard('No Recent Sales', noSales, '\u2753');
+
+            /* Horizontal bar: top 10 lowest stock */
+            renderLowStockHBar(products);
+
+            var tbody = document.getElementById('rpLowStockTable');
+            tbody.innerHTML = products.map(function(p) {
+                var rowStyle = '';
+                if (p.est_days_remaining !== null && p.est_days_remaining < 3) rowStyle = 'background:#fef2f2;';
+                else if (p.est_days_remaining !== null && p.est_days_remaining < 7) rowStyle = 'background:#fffbeb;';
+
+                var daysDisplay = p.est_days_remaining !== null
+                    ? '<span style="font-weight:600;' + (p.est_days_remaining < 3 ? 'color:#dc2626;' : p.est_days_remaining < 7 ? 'color:#f59e0b;' : '') + '">' + p.est_days_remaining + ' days</span>'
+                    : '<span style="color:#6b7280;font-style:italic;">No recent sales</span>';
+
+                return '<tr style="' + rowStyle + '">' +
+                    '<td>' + escapeHtml(p.product_name) + '</td>' +
+                    '<td>' + fmtInt(p.stock_quantity) + '</td>' +
+                    '<td>' + fmtInt(p.minimum_stock_threshold) + '</td>' +
+                    '<td>' + p.avg_daily_sales.toFixed(2) + '</td>' +
+                    '<td>' + daysDisplay + '</td></tr>';
+            }).join('');
+        }).catch(function(err) {
+            loading.style.display = 'none';
+            console.error('Low stock prediction error:', err);
+            showToast('Failed to load low stock prediction', 'error');
+        });
+    };
+
+    /* ══════════════════════════════════════════════════════════════
+       SLOW MOVING PRODUCTS TAB
+       ══════════════════════════════════════════════════════════════ */
+    window.rpLoadSlowMoving = function() {
+        var loading = document.getElementById('rpSlowMovingLoading');
+        var content = document.getElementById('rpSlowMovingContent');
+        var empty   = document.getElementById('rpSlowMovingEmpty');
+        var exportDiv = document.getElementById('rpSlowMovingExport');
+        loading.style.display = ''; content.style.display = 'none'; empty.style.display = 'none'; exportDiv.style.display = 'none';
+
+        var days = document.getElementById('rpSlowMovingDays').value;
+
+        fetch('/api/reports/slow-moving?days=' + days).then(function(r) {
+            if (!r.ok) { return r.json().then(function(err) { throw new Error(err.error || 'Failed to load report data'); }); }
+            return r.json();
+        }).then(function(data) {
+            loading.style.display = 'none';
+            var products = data.products || [];
+            lastSlowMovingData = data;
+
+            if (!products.length) { empty.style.display = ''; content.style.display = 'none'; return; }
+            empty.style.display = 'none'; content.style.display = ''; exportDiv.style.display = 'flex';
+            document.getElementById('rpSlowMovingPdfBtn').href = '/api/reports/slow-moving/pdf?days=' + days;
+            document.getElementById('rpSlowMovingExcelBtn').href = '/api/reports/slow-moving/excel?days=' + days;
+
+            var totalStock = products.reduce(function(s, p) { return s + p.stock_quantity; }, 0);
+
+            document.getElementById('rpSlowMovingStats').innerHTML =
+                statCard('Slow Moving (' + days + 'd)', products.length, '\uD83D\uDC0C') +
+                statCard('Total Stock Idle', fmtInt(totalStock), '\uD83D\uDCE6');
+
+            var tbody = document.getElementById('rpSlowMovingTable');
+            tbody.innerHTML = products.map(function(p) {
+                var lastSale = p.last_sale_date
+                    ? new Date(p.last_sale_date).toLocaleDateString('en-PK')
+                    : '<span style="color:#6b7280;font-style:italic;">Never sold</span>';
+                var daysText = p.days_since_last_sale != null ? p.days_since_last_sale + ' days' : '—';
+                return '<tr>' +
+                    '<td>' + escapeHtml(p.product_name) + '</td>' +
+                    '<td>' + lastSale + '</td>' +
+                    '<td>' + daysText + '</td>' +
+                    '<td>' + fmtInt(p.stock_quantity) + '</td></tr>';
+            }).join('');
+        }).catch(function(err) {
+            loading.style.display = 'none';
+            console.error('Slow moving error:', err);
+            showToast('Failed to load slow moving products', 'error');
+        });
+    };
+
+    /* ══════════════════════════════════════════════════════════════
+       DEAD STOCK TAB
+       ══════════════════════════════════════════════════════════════ */
+    window.rpLoadDeadStock = function() {
+        var loading = document.getElementById('rpDeadStockLoading');
+        var content = document.getElementById('rpDeadStockContent');
+        var empty   = document.getElementById('rpDeadStockEmpty');
+        var exportDiv = document.getElementById('rpDeadStockExport');
+        loading.style.display = ''; content.style.display = 'none'; empty.style.display = 'none'; exportDiv.style.display = 'none';
+
+        fetch('/api/reports/dead-stock').then(function(r) {
+            if (!r.ok) { return r.json().then(function(err) { throw new Error(err.error || 'Failed to load report data'); }); }
+            return r.json();
+        }).then(function(data) {
+            loading.style.display = 'none';
+            var products = data.products || [];
+            var totalValue = data.total_inventory_value || 0;
+            lastDeadStockData = data;
+
+            if (!products.length) { empty.style.display = ''; content.style.display = 'none'; return; }
+            empty.style.display = 'none'; content.style.display = ''; exportDiv.style.display = 'flex';
+            document.getElementById('rpDeadStockPdfBtn').href = '/api/reports/dead-stock/pdf';
+            document.getElementById('rpDeadStockExcelBtn').href = '/api/reports/dead-stock/excel';
+
+            document.getElementById('rpDeadStockStats').innerHTML =
+                statCard('Dead Stock Items', products.length, '\uD83D\uDC80') +
+                statCard('Capital Stuck', fmt(totalValue), '\uD83D\uDCB0', totalValue > 0 ? 'color:#dc2626;' : '');
+
+            var tbody = document.getElementById('rpDeadStockTable');
+            tbody.innerHTML = products.map(function(p) {
+                var daysText = p.days_since_last_sale != null ? p.days_since_last_sale + ' days' : 'Never sold';
+                return '<tr>' +
+                    '<td>' + escapeHtml(p.product_name) + '</td>' +
+                    '<td>' + daysText + '</td>' +
+                    '<td>' + fmtInt(p.stock_quantity) + '</td>' +
+                    '<td>' + fmt(p.price) + '</td>' +
+                    '<td style="font-weight:600;">' + fmt(p.inventory_value) + '</td></tr>';
+            }).join('');
+        }).catch(function(err) {
+            loading.style.display = 'none';
+            console.error('Dead stock error:', err);
+            showToast('Failed to load dead stock report', 'error');
+        });
+    };
+
+    function renderPurchasesPie(byCategory) {
+        if (chartPurchasesPie) { chartPurchasesPie.destroy(); chartPurchasesPie = null; }
+        var canvas = document.getElementById('rpPurchasesPieChart');
+        if (!canvas || !byCategory.length) return;
+        var colors = ['#3b82f6', '#22c55e', '#f59e0b', '#ef4444', '#8b5cf6', '#06b6d4', '#ec4899'];
+        chartPurchasesPie = new Chart(canvas, {
+            type: 'pie',
+            data: {
+                labels: byCategory.map(function(c) { return c.category_name; }),
+                datasets: [{
+                    data: byCategory.map(function(c) { return parseFloat(c.total_value || 0); }),
+                    backgroundColor: colors.slice(0, byCategory.length)
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {
+                    legend: { position: 'bottom', labels: { font: { size: 12 }, padding: 12 } }
+                }
+            }
+        });
+    }
+
+    /* ══════════════════════════════════════════════════════════════
+       PURCHASES TAB
+       ══════════════════════════════════════════════════════════════ */
+    window.rpLoadPurchases = function() {
+        var loading = document.getElementById('rpPurchasesLoading');
+        var content = document.getElementById('rpPurchasesContent');
+        var empty   = document.getElementById('rpPurchasesEmpty');
+        var exportDiv = document.getElementById('rpPurchasesExport');
+        loading.style.display = ''; content.style.display = 'none'; empty.style.display = 'none'; exportDiv.style.display = 'none';
+
+        var catId = document.getElementById('rpPurchasesCategory').value;
+        var supId = document.getElementById('rpPurchasesSupplier').value;
+        var params = '';
+        if (catId) params += '&category_id=' + catId;
+        if (supId) params += '&supplier_id=' + supId;
+
+        fetch('/api/reports/purchases' + (params ? '?' + params.substring(1) : '')).then(function(r) {
+            if (!r.ok) { return r.json().then(function(err) { throw new Error(err.error || 'Failed to load report data'); }); }
+            return r.json();
+        }).then(function(data) {
+            loading.style.display = 'none';
+            lastPurchasesData = data;
+
+            var today = data.today || {};
+            var monthly = data.monthly || {};
+            var overall = data.overall || {};
+            var bySupplier = data.by_supplier || [];
+            var byCategory = data.by_category || [];
+
+            if (!overall.total_pos || overall.total_pos === 0) {
+                empty.style.display = ''; content.style.display = 'none'; return;
+            }
+            empty.style.display = 'none'; content.style.display = ''; exportDiv.style.display = 'flex';
+            document.getElementById('rpPurchasesPdfBtn').href = '/api/reports/purchases/pdf' + (params ? '?' + params.substring(1) : '');
+            document.getElementById('rpPurchasesExcelBtn').href = '/api/reports/purchases/excel' + (params ? '?' + params.substring(1) : '');
+
+            document.getElementById('rpPurchasesStats').innerHTML =
+                statCard('Today\'s POs', fmtInt(today.count), '\uD83D\uDED2') +
+                statCard('Today\'s Value', fmt(today.total_value), '\uD83D\uDCB0') +
+                statCard('Monthly POs', fmtInt(monthly.count), '\uD83D\uDCC5') +
+                statCard('Monthly Value', fmt(monthly.total_value), '\uD83D\uDCB0') +
+                statCard('Total POs (All Time)', fmtInt(overall.total_pos), '\uD83D\uDCCA') +
+                statCard('Pending Approval', fmtInt(overall.pending_count || 0), '\u23F3');
+
+            /* Supplier-wise table */
+            var sTbody = document.getElementById('rpPurchasesSupplierTable');
+            if (!bySupplier.length) {
+                sTbody.innerHTML = '<tr><td colspan="3" style="text-align:center;color:#6b7280;">No purchases this month</td></tr>';
+            } else {
+                sTbody.innerHTML = bySupplier.map(function(s) {
+                    return '<tr><td>' + escapeHtml(s.supplier_name) + '</td>' +
+                        '<td>' + fmtInt(s.order_count) + '</td>' +
+                        '<td style="font-weight:600;">' + fmt(s.total_value) + '</td></tr>';
+                }).join('');
+            }
+
+            /* Category-wise table + pie chart */
+            var cTbody = document.getElementById('rpPurchasesCategoryTable');
+            if (!byCategory.length) {
+                cTbody.innerHTML = '<tr><td colspan="2" style="text-align:center;color:#6b7280;">No purchases this month</td></tr>';
+            } else {
+                cTbody.innerHTML = byCategory.map(function(c) {
+                    return '<tr><td>' + escapeHtml(c.category_name) + '</td>' +
+                        '<td style="font-weight:600;">' + fmt(c.total_value) + '</td></tr>';
+                }).join('');
+            }
+            renderPurchasesPie(byCategory);
+
+            /* Overall summary */
+            document.getElementById('rpPurchasesOverallInfo').innerHTML =
+                '<div style="margin-bottom:8px;"><strong>Total POs:</strong> ' + fmtInt(overall.total_pos) + '</div>' +
+                '<div style="margin-bottom:8px;"><strong>Total Value:</strong> ' + fmt(overall.total_value) + '</div>' +
+                '<div><strong>Pending Approval:</strong> ' + fmtInt(overall.pending_count || 0) + '</div>';
+
+        }).catch(function(err) {
+            loading.style.display = 'none';
+            console.error('Purchase report error:', err);
+            showToast('Failed to load purchase report', 'error');
+        });
+    };
+
+    /* ══════════════════════════════════════════════════════════════
+       SUPPLIERS TAB
+       ══════════════════════════════════════════════════════════════ */
+    window.rpLoadSuppliers = function() {
+        var loading = document.getElementById('rpSuppliersLoading');
+        var content = document.getElementById('rpSuppliersContent');
+        var empty   = document.getElementById('rpSuppliersEmpty');
+        var exportDiv = document.getElementById('rpSuppliersExport');
+        loading.style.display = ''; content.style.display = 'none'; empty.style.display = 'none'; exportDiv.style.display = 'none';
+
+        var supId = document.getElementById('rpSuppliersFilter').value;
+        var params = supId ? '?supplier_id=' + supId : '';
+
+        fetch('/api/reports/suppliers' + params).then(function(r) {
+            if (!r.ok) { return r.json().then(function(err) { throw new Error(err.error || 'Failed to load report data'); }); }
+            return r.json();
+        }).then(function(data) {
+            loading.style.display = 'none';
+            lastSuppliersData = data;
+
+            var summary = data.summary || {};
+            var suppliers = data.suppliers || [];
+
+            if (!suppliers.length) { empty.style.display = ''; content.style.display = 'none'; return; }
+            empty.style.display = 'none'; content.style.display = ''; exportDiv.style.display = 'flex';
+            document.getElementById('rpSuppliersPdfBtn').href = '/api/reports/suppliers/pdf' + params;
+            document.getElementById('rpSuppliersExcelBtn').href = '/api/reports/suppliers/excel' + params;
+
+            document.getElementById('rpSuppliersStats').innerHTML =
+                statCard('Total Suppliers', fmtInt(summary.total_suppliers), '\uD83C\uDFED') +
+                statCard('Active Suppliers', fmtInt(summary.active_suppliers), '\u2705') +
+                statCard('Total Orders', fmtInt(summary.total_orders), '\uD83D\uDCCB') +
+                statCard('Total Value', fmt(summary.total_value), '\uD83D\uDCB0');
+
+            var tbody = document.getElementById('rpSuppliersTable');
+            tbody.innerHTML = suppliers.map(function(s) {
+                var contact = s.contact_person || s.phone || s.email || '—';
+                var lastOrder = s.last_order_date
+                    ? new Date(s.last_order_date).toLocaleDateString('en-PK')
+                    : '<span style="color:#6b7280;font-style:italic;">Never</span>';
+                var pendingBadge = s.pending_orders > 0
+                    ? '<span class="badge-warning">' + s.pending_orders + '</span>'
+                    : '<span style="color:#6b7280;">0</span>';
+                return '<tr>' +
+                    '<td style="font-weight:500;">' + escapeHtml(s.supplier_name) + '</td>' +
+                    '<td>' + escapeHtml(contact) + '</td>' +
+                    '<td>' + fmtInt(s.total_orders) + '</td>' +
+                    '<td>' + pendingBadge + '</td>' +
+                    '<td style="font-weight:600;">' + fmt(s.total_value) + '</td>' +
+                    '<td>' + lastOrder + '</td></tr>';
+            }).join('');
+        }).catch(function(err) {
+            loading.style.display = 'none';
+            console.error('Supplier report error:', err);
+            showToast('Failed to load supplier report', 'error');
+        });
+    };
+
+    /* ══════════════════════════════════════════════════════════════
+       INSIGHTS TAB
+       ══════════════════════════════════════════════════════════════ */
+    window.rpLoadInsights = function() {
+        var loading = document.getElementById('rpInsightsLoading');
+        var content = document.getElementById('rpInsightsContent');
+        var empty   = document.getElementById('rpInsightsEmpty');
+        loading.style.display = ''; content.style.display = 'none'; empty.style.display = 'none';
+
+        fetch('/api/reports/insights').then(function(r) {
+            if (!r.ok) { return r.json().then(function(err) { throw new Error(err.error || 'Failed to load report data'); }); }
+            return r.json();
+        }).then(function(data) {
+            loading.style.display = 'none';
+            var items = data.insights || [];
+            lastInsightsData = data;
+
+            if (!items.length) { empty.style.display = ''; content.style.display = 'none'; return; }
+            empty.style.display = 'none'; content.style.display = '';
+
+            var sections = {
+                sales:     { section: document.getElementById('rpInsightsSalesSection'),     list: document.getElementById('rpInsightsSalesList') },
+                stock:     { section: document.getElementById('rpInsightsStockSection'),     list: document.getElementById('rpInsightsStockList') },
+                customers: { section: document.getElementById('rpInsightsCustomersSection'), list: document.getElementById('rpInsightsCustomersList') }
+            };
+
+            var typeOrder = { warning: 0, positive: 1, neutral: 2 };
+            var typeStyle = {
+                warning:  { bg: '#fffbeb', border: '#f59e0b', icon: '\u26A0\uFE0F' },
+                positive: { bg: '#f0fdf4', border: '#22c55e', icon: '\uD83D\uDCC8' },
+                neutral:  { bg: '#f9fafb', border: '#6b7280', icon: '\uD83D\uDCA1' }
+            };
+
+            var grouped = { sales: [], stock: [], customers: [] };
+            items.forEach(function(item) {
+                var cat = item.category || 'sales';
+                if (!grouped[cat]) cat = 'sales';
+                grouped[cat].push(item);
+            });
+
+            ['sales', 'stock', 'customers'].forEach(function(cat) {
+                var arr = grouped[cat];
+                if (!arr.length) { sections[cat].section.style.display = 'none'; return; }
+                arr.sort(function(a, b) { return (typeOrder[a.type] ?? 2) - (typeOrder[b.type] ?? 2); });
+
+                sections[cat].list.innerHTML = arr.map(function(item) {
+                    var s = typeStyle[item.type] || typeStyle.neutral;
+                    return '<div class="rp-insight-card" style="border-left:4px solid ' + s.border + ';background:' + s.bg + ';">' +
+                        '<span class="rp-insight-icon">' + s.icon + '</span>' +
+                        '<span class="rp-insight-body">' + escapeHtml(item.text) + '</span>' +
+                        '</div>';
+                }).join('');
+                sections[cat].section.style.display = '';
+            });
+        }).catch(function(err) {
+            loading.style.display = 'none';
+            console.error('Insights error:', err);
+            showToast('Failed to load insights', 'error');
+        });
+    };
+
     /* ── Init ── */
     document.addEventListener('DOMContentLoaded', function() {
         whenUserReady(function(role) {
             /* Set default date range: last 30 days */
             document.getElementById('rpFrom').value = daysAgo(30);
             document.getElementById('rpTo').value   = today();
+
+            /* Load filter options */
+            loadCategories();
+            loadSuppliers();
+
+            /* Filter onchange handlers */
+            document.getElementById('rpStockCategory').addEventListener('change', function() { rpApply(); });
+            document.getElementById('rpPurchasesCategory').addEventListener('change', function() { rpLoadPurchases(); });
+            document.getElementById('rpPurchasesSupplier').addEventListener('change', function() { rpLoadPurchases(); });
+            document.getElementById('rpSuppliersFilter').addEventListener('change', function() { rpLoadSuppliers(); });
+
             rpApply();
+
+            /* URL-based tab selection: /reports?tab=sales */
+            var validTabs = ['sales','stock','profit','lowstock','slowmoving','deadstock','purchases','suppliers','insights'];
+            var urlTab = new URLSearchParams(window.location.search).get('tab');
+            if (urlTab && validTabs.indexOf(urlTab) !== -1) {
+                rpSwitchTab(urlTab);
+            }
         });
     });
 })();

@@ -52,11 +52,18 @@ def get_supplier_by_id(supplier_id):
         if not supplier:
             return jsonify({'error': 'Supplier not found'}), 404
 
-        # Purchase history summary — placeholder values for now.
-        # These will be populated from the Purchases module once Phase 7 is built.
-        supplier['total_orders']    = 0
-        supplier['total_spend']     = 0.00
-        supplier['last_order_date'] = None
+        # Purchase history summary from purchase_orders
+        cursor.execute("""
+            SELECT COUNT(*) AS total_orders,
+                   COALESCE(SUM(subtotal), 0) AS total_spend,
+                   MAX(created_at) AS last_order_date
+            FROM purchase_orders
+            WHERE supplier_id = %s
+        """, (supplier_id,))
+        po_stats = cursor.fetchone()
+        supplier['total_orders']    = po_stats['total_orders']
+        supplier['total_spend']     = float(po_stats['total_spend'])
+        supplier['last_order_date'] = str(po_stats['last_order_date']) if po_stats['last_order_date'] else None
 
         return jsonify(supplier), 200
 

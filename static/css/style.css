@@ -374,6 +374,92 @@ tr.low-stock { background: #fee2e2; }
 .empty-msg   { text-align: center; padding: 20px; color: var(--text-gray); }
 .bill-number-display { font-size: 0.875rem; color: var(--text-gray); margin-bottom: 10px; }
 
+/* ── Heatmap Grid ─────────────────────────────────────────────── */
+.heatmap-grid {
+    display: grid;
+    gap: 3px;
+}
+.heatmap-cell {
+    border-radius: 3px;
+    aspect-ratio: 1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 10px;
+    color: #374151;
+    transition: transform 0.1s;
+    cursor: default;
+}
+.heatmap-cell:hover { transform: scale(1.15); z-index: 1; }
+.heatmap-label {
+    font-size: 11px;
+    color: var(--text-gray);
+    text-align: center;
+    padding: 2px 0;
+    font-weight: 500;
+}
+.heatmap-row-label {
+    font-size: 11px;
+    color: var(--text-gray);
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    padding-right: 6px;
+    font-weight: 500;
+}
+.heatmap-legend {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    font-size: 11px;
+    color: var(--text-gray);
+    margin-top: 8px;
+}
+.heatmap-legend-cell {
+    width: 14px;
+    height: 14px;
+    border-radius: 2px;
+}
+.heatmap-subtitle {
+    font-size: 11px;
+    color: #6b7280;
+    margin-bottom: 8px;
+}
+.heatmap-note {
+    font-size: 11px;
+    color: #9ca3af;
+    margin-top: 6px;
+    font-style: italic;
+}
+
+/* ── Report Card Panels ───────────────────────────────────────── */
+.rp-chart-card {
+    background: white;
+    border-radius: 10px;
+    padding: 18px;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.08);
+}
+.rp-chart-card h3 {
+    font-size: 14px;
+    font-weight: 600;
+    margin-bottom: 14px;
+    color: #111827;
+}
+.rp-chart-row {
+    display: grid;
+    gap: 16px;
+    margin-bottom: 18px;
+}
+.rp-chart-row-2 { grid-template-columns: 2fr 1fr; }
+.rp-chart-row-equal { grid-template-columns: 1fr 1fr; }
+.rp-chart-row-3 { grid-template-columns: 1fr 1fr 1fr; }
+@media (max-width: 900px) {
+    .rp-chart-row-2, .rp-chart-row-equal, .rp-chart-row-3 { grid-template-columns: 1fr; }
+}
+
+/* ── Badge Warning ─────────────────────────────────────────────── */
+.badge-warning { background: var(--warning); color: white; padding: 3px 7px; border-radius: 4px; font-size: 0.8rem; }
+
 /* ── POS wrapper ──────────────────────────────────────────────── */
 .pos-wrapper {
     display: grid;
@@ -684,3 +770,23 @@ tr.low-stock { background: #fee2e2; }
     .pos-left    { border-right: none; border-bottom: 1px solid #e5e7eb; max-height: 50%; }
     .pos-right   { max-height: 50%; }
 }
+
+/* ── Insights Cards ─────────────────────────────────────────────── */
+.rp-insights-section-title {
+    font-size: 13px;
+    font-weight: 600;
+    color: #374151;
+    padding-bottom: 6px;
+    margin-bottom: 10px;
+    border-bottom: 1px solid var(--border-light);
+}
+.rp-insights-list { display: flex; flex-direction: column; gap: 8px; }
+.rp-insight-card {
+    display: flex;
+    align-items: flex-start;
+    gap: 10px;
+    padding: 12px 14px;
+    border-radius: 6px;
+}
+.rp-insight-icon { font-size: 16px; flex-shrink: 0; line-height: 1.6; }
+.rp-insight-body { font-size: 13px; color: #374151; line-height: 1.5; }

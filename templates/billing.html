@@ -311,7 +311,7 @@
 
     var discPct  = parseFloat(document.getElementById('discountPct').value) || 0;
     var gstPct   = parseFloat(document.getElementById('gstPct').value) || 0;
-    var billDate = document.getElementById('billDate').value || new Date().toISOString().split('T')[0];
+    var billDate = document.getElementById('billDate').value || todayLocal();
     var dueDate  = document.getElementById('dueDate').value || null;
 
     var payload = {
@@ -436,7 +436,7 @@
   function closeReceipt() { document.getElementById('printOverlay').style.display = 'none'; }
 
   document.addEventListener('DOMContentLoaded', function(){
-    document.getElementById('billDate').value = new Date().toISOString().split('T')[0];
+    document.getElementById('billDate').value = todayLocal();
     document.getElementById('discountPct').addEventListener('input', updateTotals);
     document.getElementById('gstPct').addEventListener('input', updateTotals);
     document.getElementById('chargeBtn').addEventListener('click', generateBill);

@@ -251,6 +251,11 @@
         document.head.appendChild(style);
     }
 
+     // Local date as YYYY-MM-DD (avoids toISOString UTC shift)
+    function todayLocal() {
+        var d = new Date();
+        return d.getFullYear() + '-' + String(d.getMonth()+1).padStart(2,'0') + '-' + String(d.getDate()).padStart(2,'0');
+    }
      // Safe date formatter — prevents timezone shift
     function fmtDate(dateStr) {
         if (!dateStr) return '—';

@@ -9,7 +9,7 @@ sales_bp = Blueprint('sales', __name__)
 
 
 @sales_bp.route('/api/sales/summary', methods=['GET'])
-@roles_required('admin', 'manager')
+@roles_required('admin', 'manager', 'staff')
 def get_sales_summary():
     connection = None
     cursor = None
@@ -30,11 +30,16 @@ def get_sales_summary():
             ORDER BY total_quantity_sold DESC LIMIT 1
         """)
         best_selling = cursor.fetchone()
-        return jsonify({
+
+        role = request.current_user.get('role')
+        resp = {
             'total_sales': summary['total_sales'] or 0,
-            'total_revenue': float(summary['total_revenue']) if summary['total_revenue'] else 0.0,
             'best_selling_product': best_selling if best_selling else None
-        }), 200
+        }
+        if role in ('admin', 'manager'):
+            resp['total_revenue'] = float(summary['total_revenue']) if summary['total_revenue'] else 0.0
+
+        return jsonify(resp), 200
     except Error as e:
         return jsonify({'error': str(e)}), 500
     finally:

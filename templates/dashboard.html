@@ -6,99 +6,234 @@
 <div id="dashboardContent">
     <div class="loading-msg">Loading dashboard...</div>
 </div>
-
+<style>
+.dash-section-heading {
+    font-size: 15px; font-weight: 600; color: #111827;
+    margin: 28px 0 14px 0; padding-bottom: 8px;
+    border-bottom: 1px solid var(--border-light);
+}
+.dash-section-heading:first-child { margin-top: 0; }
+.dash-financial-wrap {
+    background: linear-gradient(135deg, #f0f9ff 0%, #f8fafc 100%);
+    border-radius: 10px; padding: 18px; margin-bottom: 24px;
+    border: 1px solid #e0e7ff;
+}
+.dash-trend-grid { display:grid; grid-template-columns:1fr 1fr 1fr 1fr; gap:16px; margin-bottom:24px; }
+.dash-trend-card { background:#fff; border-radius:10px; padding:18px; box-shadow:0 1px 3px rgba(0,0,0,0.08); }
+.dash-trend-card h3 { font-size:14px; font-weight:600; margin-bottom:14px; color:#111827; }
+.dash-trend-card canvas { width:100%!important; height:220px!important; }
+@media (max-width:1200px) { .dash-trend-grid { grid-template-columns:1fr 1fr; } }
+@media (max-width:900px) { .dash-trend-grid { grid-template-columns:1fr; } }
+.dash-kpi-note { font-size:11px; color:#9ca3af; margin-top:2px; }
+.stat-card { position: relative; }
+.stat-card .stat-chevron {
+    position: absolute; right: 14px; top: 50%; transform: translateY(-50%);
+    font-size: 14px; color: #d1d5db; opacity: 0; transition: opacity 0.15s;
+}
+.stat-card:hover .stat-chevron { opacity: 1; }
+</style>
 <script>
-async function loadDashboard() {
+async function loadDashboard(role) {
     try {
-        const [products, suppliers, summary, sales] = await Promise.all([
+        var isManager = (role === 'admin' || role === 'manager');
+
+        var fetches = [
             fetch('/api/products').then(r => r.json()),
             fetch('/api/suppliers').then(r => r.json()),
             fetch('/api/sales/summary').then(r => r.json()),
-            fetch('/api/sales').then(r => r.json())
-        ]);
+            fetch('/api/sales').then(r => r.json()),
+            fetch('/api/reports/kpi-dashboard').then(r => r.json()).catch(function(){ return null; })
+        ];
+        var results = await Promise.all(fetches);
+        var products   = results[0];
+        var suppliers  = results[1];
+        var summary    = results[2];
+        var sales      = results[3];
+        var kpiData    = results[4] || null;
 
-        const lowStock = products.filter(p => p.stock_quantity <= (p.minimum_stock_threshold || 10)).slice(0, 10);
+        const lowStock    = products.filter(p => p.stock_quantity <= (p.minimum_stock_threshold || 10)).slice(0, 10);
         const recentSales = sales.slice(0, 5);
 
-        var alertRes = await fetch('/api/inventory/alerts').then(function(r){ return r.json(); }).catch(function(){ return []; });
+        var alertRes  = await fetch('/api/inventory/alerts').then(function(r){ return r.json(); }).catch(function(){ return []; });
         var alertCount = alertRes.length || 0;
 
-        document.getElementById('dashboardContent').innerHTML = `
-            <div class="stats-grid">
-                <div class="stat-card">
-                    <div class="stat-info">
-                        <div class="stat-label">Total Products</div>
-                        <div class="stat-value">${products.length}</div>
-                    </div>
-                    <div class="stat-icon">🗂️</div>
-                </div>
-                <div class="stat-card">
-                    <div class="stat-info">
-                        <div class="stat-label">Total Suppliers</div>
-                        <div class="stat-value">${suppliers.length}</div>
-                    </div>
-                    <div class="stat-icon">🏭</div>
-                </div>
-                <div class="stat-card" style="cursor:pointer;" onclick="window.location.href='/inventory'">
-                    <div class="stat-info">
-                        <div class="stat-label">Active Alerts</div>
-                        <div class="stat-value" style="color:${alertCount > 0 ? '#dc2626' : '#16a34a'}">${alertCount}</div>
-                    </div>
-                    <div class="stat-icon">⚠️</div>
-                </div>
-                <div class="stat-card">
-                    <div class="stat-info">
-                        <div class="stat-label">Total Sales</div>
-                        <div class="stat-value">${summary.total_sales || 0}</div>
-                    </div>
-                    <div class="stat-icon">💰</div>
-                </div>
-                <div class="stat-card">
-                    <div class="stat-info">
-                        <div class="stat-label">Total Revenue</div>
-                        <div class="stat-value">₨${parseFloat(summary.total_revenue || 0).toLocaleString('en-PK', {minimumFractionDigits: 2})}</div>
-                    </div>
-                    <div class="stat-icon">💵</div>
-                </div>
-            </div>
+        var kpis  = kpiData ? kpiData.kpis : {};
+        var trend = kpiData ? kpiData.trend : [];
 
-            <div class="table-container">
-                <h3>⚠️ Low Stock Alert</h3>
-                ${lowStock.length > 0 ? `
-                <table>
-                    <thead><tr><th>ID</th><th>Product</th><th>Stock</th><th>Threshold</th><th>Category</th></tr></thead>
-                    <tbody>
-                        ${lowStock.map(p => `
-                        <tr class="low-stock">
-                            <td>${p.product_id}</td>
-                            <td>${escapeHtml(p.name)}</td>
-                            <td><span class="badge-danger">${p.stock_quantity} units</span></td>
-                            <td>${p.minimum_stock_threshold || 10}</td>
-                            <td>${escapeHtml(p.category || '-')}</td>
-                        </tr>`).join('')}
-                    </tbody>
-                </table>` : '<p class="empty-msg">✅ All products have sufficient stock.</p>'}
-            </div>
+        function fmt(n) {
+            return 'Rs. ' + parseFloat(n || 0).toLocaleString('en-PK', {minimumFractionDigits: 2, maximumFractionDigits: 2});
+        }
+        function fmtInt(n) {
+            return parseFloat(n || 0).toLocaleString('en-PK');
+        }
+        function statCard(label, value, icon, href, extra, valueStyle) {
+            return '<div class="stat-card" style="cursor:pointer;" onclick="window.location.href=\'' + href + '\'">' +
+                '<div class="stat-info"><div class="stat-label">' + label + '</div>' +
+                '<div class="stat-value"' + (valueStyle ? ' style="' + valueStyle + '"' : '') + '>' + value + '</div>' +
+                (extra ? '<div class="dash-kpi-note">' + extra + '</div>' : '') +
+                '</div><div class="stat-icon">' + icon + '</div>' +
+                '<span class="stat-chevron">\u203A</span></div>';
+        }
 
-            <div class="table-container" style="margin-top:24px;">
-                <h3>📋 Recent Sales</h3>
-                ${recentSales.length > 0 ? `
-                <table>
-                    <thead><tr><th>ID</th><th>Product</th><th>Qty</th><th>Price</th><th>Total</th><th>Date</th></tr></thead>
-                    <tbody>
-                        ${recentSales.map(s => `
-                        <tr>
-                            <td>${s.sale_id}</td>
-                            <td>${escapeHtml(s.product_name)}</td>
-                            <td>${s.quantity_sold}</td>
-                            <td>₨${parseFloat(s.sale_price).toLocaleString('en-PK', {minimumFractionDigits: 2})}</td>
-                            <td>₨${parseFloat(s.total_amount).toLocaleString('en-PK', {minimumFractionDigits: 2})}</td>
-                            <td>${new Date(s.sale_date).toLocaleDateString()}</td>
-                        </tr>`).join('')}
-                    </tbody>
-                </table>` : '<p class="empty-msg">No sales recorded yet.</p>'}
-            </div>
-        `;
+        /* ── Build stat cards ── */
+        var opsCards = statCard('Total Products', fmtInt(products.length), '\uD83D\uDDC2\uFE0F', '/products') +
+            (isManager ? statCard('Total Suppliers', fmtInt(suppliers.length), '\uD83D\uDDC4\uFE0F', '/suppliers') : '') +
+            statCard('Total Sales', fmtInt(summary.total_sales || 0), '\uD83D\uDCB0', '/sales') +
+            statCard('Active Alerts', alertCount, '\u26A0\uFE0F', '/inventory',
+                null, 'color:' + (alertCount > 0 ? '#dc2626' : '#16a34a')) +
+            statCard('Pending Payments', fmtInt(kpis.pending_count || 0), '\u23F3', '/pending-payments',
+                fmt(kpis.pending_outstanding || 0) + ' outstanding');
+
+        var finCards = '';
+        if (isManager) {
+            finCards = statCard('Total Revenue', fmt(summary.total_revenue || 0), '\uD83D\uDCB5', '/reports?tab=sales') +
+                statCard('Profit (This Month)', fmt(kpis.profit || 0), '\uD83D\uDCB8', '/reports?tab=profit', null,
+                    parseFloat(kpis.profit || 0) < 0 ? 'color:#dc2626' : '') +
+                statCard('Customers (Est.)', fmtInt(kpis.customers_estimated || 0), '\uD83D\uDC65', '/reports?tab=suppliers',
+                    'Distinct phone #, this month') +
+                (function() {
+                    if (kpis.growth_pct !== null && kpis.growth_pct !== undefined) {
+                        var arrow = kpis.growth_pct >= 0 ? '\u25B2' : '\u25BC';
+                        var color = kpis.growth_pct >= 0 ? '#16a34a' : '#dc2626';
+                        return statCard('Revenue Growth (MoM)', arrow + ' ' + parseFloat(kpis.growth_pct).toFixed(1) + '%',
+                            '\uD83D\uDCC8', '/reports?tab=sales', null, 'color:' + color);
+                    }
+                    return statCard('Revenue Growth (MoM)', '--', '\uD83D\uDCC8', '/reports?tab=sales');
+                })();
+        }
+
+        /* ── Build chart grid ── */
+        var chartGrid = '';
+        if (trend.length > 0) {
+            chartGrid = '<div class="dash-trend-grid">' +
+                '<div class="dash-trend-card"><h3>\uD83D\uDCC8 Sales Trend (6 Mo.)</h3><canvas id="dashSalesTrend"></canvas></div>';
+            if (isManager) {
+                chartGrid +=
+                    '<div class="dash-trend-card"><h3>\uD83D\uDCB0 Revenue Trend (6 Mo.)</h3><canvas id="dashRevenueTrend"></canvas></div>' +
+                    '<div class="dash-trend-card"><h3>\uD83D\uDCB8 Profit Trend (6 Mo.)</h3><canvas id="dashProfitTrend"></canvas></div>' +
+                    '<div class="dash-trend-card"><h3>\uD83D\uDCC8 Cumulative Revenue (6 Mo.)</h3><canvas id="dashCumulRevenue"></canvas></div>';
+            }
+            chartGrid += '</div>';
+        }
+
+        /* ── Assemble page ── */
+        var html = '';
+
+        /* Section 1: At a Glance */
+        html += '<div class="dash-section-heading">\uD83D\uDCCB At a Glance</div>';
+        html += '<div class="stats-grid">' + opsCards + '</div>';
+
+        /* Section 2: Financial Overview (manager/admin only) */
+        if (isManager && finCards) {
+            html += '<div class="dash-financial-wrap">';
+            html += '<div class="dash-section-heading" style="margin-top:0;">\uD83D\uDCB0 Financial Overview</div>';
+            html += '<div class="stats-grid" style="margin-bottom:0;">' + finCards + '</div>';
+            html += '</div>';
+        }
+
+        /* Section 3: Trends */
+        html += '<div class="dash-section-heading">\uD83D\uDCC8 Trends (Last 6 Months)</div>';
+        html += chartGrid;
+
+        /* Section 4: Operational Details */
+        html += '<div class="dash-section-heading">\uD83D\uDCCB Operational Details</div>';
+
+        html += '<div class="table-container">' +
+            '<h3>\u26A0\uFE0F Low Stock Alert</h3>' +
+            (lowStock.length > 0 ?
+                '<table><thead><tr><th>ID</th><th>Product</th><th>Stock</th><th>Threshold</th><th>Category</th></tr></thead><tbody>' +
+                lowStock.map(p => '<tr class="low-stock"><td>' + p.product_id + '</td><td>' + escapeHtml(p.name) + '</td><td><span class="badge-danger">' + p.stock_quantity + ' units</span></td><td>' + (p.minimum_stock_threshold || 10) + '</td><td>' + escapeHtml(p.category || '-') + '</td></tr>').join('') +
+                '</tbody></table>' :
+                '<p class="empty-msg">\u2705 All products have sufficient stock.</p>') +
+            '</div>';
+
+        html += '<div class="table-container" style="margin-top:24px;">' +
+            '<h3>\uD83D\uDCCB Recent Sales</h3>' +
+            (recentSales.length > 0 ?
+                '<table><thead><tr><th>ID</th><th>Product</th><th>Qty</th><th>Price</th><th>Total</th><th>Date</th></tr></thead><tbody>' +
+                recentSales.map(s => '<tr><td>' + s.sale_id + '</td><td>' + escapeHtml(s.product_name) + '</td><td>' + s.quantity_sold + '</td><td>' + fmt(s.sale_price) + '</td><td>' + fmt(s.total_amount) + '</td><td>' + new Date(s.sale_date).toLocaleDateString() + '</td></tr>').join('') +
+                '</tbody></table>' :
+                '<p class="empty-msg">No sales recorded yet.</p>') +
+            '</div>';
+
+        document.getElementById('dashboardContent').innerHTML = html;
+
+        /* ── Render trend charts ── */
+        if (trend.length > 0) {
+            var labels = trend.map(function(t) { return t.month; });
+
+            function makeLineChart(canvasId, data, label, color) {
+                var ctx = document.getElementById(canvasId);
+                if (!ctx) return;
+                new Chart(ctx, {
+                    type: 'line',
+                    data: {
+                        labels: labels,
+                        datasets: [{
+                            label: label,
+                            data: data,
+                            borderColor: color,
+                            backgroundColor: color.replace('1)', '0.1)'),
+                            fill: true,
+                            tension: 0.3,
+                            pointRadius: 4,
+                            pointBackgroundColor: color,
+                            borderWidth: 2
+                        }]
+                    },
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        plugins: { legend: { display: false } },
+                        scales: {
+                            y: { beginAtZero: true, grid: { color: '#f3f4f6' }, ticks: { callback: function(v) { return 'Rs. ' + (v >= 1000 ? (v/1000).toFixed(0) + 'k' : v); } } },
+                            x: { grid: { display: false }, ticks: { font: { size: 11 } } }
+                        }
+                    }
+                });
+            }
+
+            makeLineChart('dashSalesTrend', trend.map(function(t) { return t.orders; }), 'Orders', 'rgba(59,130,246,1)');
+
+            if (isManager) {
+                makeLineChart('dashRevenueTrend', trend.map(function(t) { return t.revenue; }), 'Revenue', 'rgba(34,197,94,1)');
+                makeLineChart('dashProfitTrend', trend.map(function(t) { return t.profit; }), 'Profit', 'rgba(139,92,246,1)');
+
+                var cumulData = [];
+                var running = 0;
+                trend.forEach(function(t) { running += (t.revenue || 0); cumulData.push(Math.round(running * 100) / 100); });
+                var cumulCtx = document.getElementById('dashCumulRevenue');
+                if (cumulCtx) {
+                    new Chart(cumulCtx, {
+                        type: 'line',
+                        data: {
+                            labels: labels,
+                            datasets: [{
+                                label: 'Cumulative Revenue',
+                                data: cumulData,
+                                borderColor: 'rgba(236,72,153,1)',
+                                backgroundColor: 'rgba(236,72,153,0.15)',
+                                fill: true,
+                                tension: 0.35,
+                                pointRadius: 4,
+                                pointBackgroundColor: 'rgba(236,72,153,1)',
+                                borderWidth: 2
+                            }]
+                        },
+                        options: {
+                            responsive: true,
+                            maintainAspectRatio: false,
+                            plugins: { legend: { display: false } },
+                            scales: {
+                                y: { beginAtZero: true, grid: { color: '#f3f4f6' }, ticks: { callback: function(v) { return 'Rs. ' + (v >= 1000 ? (v/1000).toFixed(0) + 'k' : v); } } },
+                                x: { grid: { display: false }, ticks: { font: { size: 11 } } }
+                            }
+                        }
+                    });
+                }
+            }
+        }
+
     } catch (err) {
         console.error('Dashboard error:', err);
         document.getElementById('dashboardContent').innerHTML =
@@ -106,6 +241,6 @@ async function loadDashboard() {
     }
 }
 
-loadDashboard();
+whenUserReady(function(role) { loadDashboard(role); });
 </script>
 {% endblock %}

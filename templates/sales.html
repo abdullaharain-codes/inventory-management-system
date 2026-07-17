@@ -183,7 +183,7 @@
             var item   = detail.items.find(function(i) { return i.product_id === productId; });
             if (!item) { showToast('Product not found in bill', 'error'); return; }
 
-            var today = new Date().toISOString().split('T')[0];
+            var today = todayLocal();
             document.getElementById('refundModalBody').innerHTML =
                 '<div style="background:#fef3c7;border:1px solid #fbbf24;border-radius:8px;' +
                 'padding:10px;font-size:12px;color:#92400e;margin-bottom:14px;">' +
@@ -291,7 +291,7 @@
     /* ── Add Sale Modal ──────────────────────── */
     async function showAddSaleModal() {
         const products = await fetch('/api/products').then(r => r.json());
-        const today    = new Date().toISOString().split('T')[0];
+        const today    = todayLocal();
         const formHTML =
             '<div class="form-group"><label>Product *</label>' +
             '<select id="product_id" required><option value="">Select product...</option>' +

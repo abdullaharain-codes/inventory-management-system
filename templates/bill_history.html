@@ -254,7 +254,7 @@
 
     function renderRefundTab(body) {
         if (!currentBill) return;
-        var today = new Date().toISOString().split('T')[0];
+        var today = todayLocal();
         var opts = (currentBill.items||[]).map(function(item){
             return '<option value="' + item.product_id + '" data-max="' + item.quantity + '" data-price="' + item.unit_price + '">' +
                    escapeHtml(item.product_name) + ' (Qty: ' + item.quantity + ' @ ' + fmt(item.unit_price) + ')</option>';

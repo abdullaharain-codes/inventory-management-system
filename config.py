@@ -23,5 +23,6 @@ FLASK_ENV   = os.getenv('FLASK_ENV', 'development')
 FLASK_DEBUG = os.getenv('FLASK_DEBUG', 'True') == 'True'
 
 # ── Security ──────────────────────────────────────────────────────
+IS_PRODUCTION      = os.getenv('IS_PRODUCTION', 'False') == 'True'
 MAX_LOGIN_ATTEMPTS = int(os.getenv('MAX_LOGIN_ATTEMPTS', 5))
 LOCKOUT_MINUTES    = int(os.getenv('LOCKOUT_MINUTES', 15))

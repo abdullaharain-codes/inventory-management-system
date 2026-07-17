@@ -9,7 +9,7 @@ from db.connection import get_db_connection
 from mysql.connector import Error
 from config import (
     JWT_SECRET_KEY, JWT_ACCESS_TOKEN_EXPIRES, JWT_REFRESH_TOKEN_EXPIRES,
-    MAX_LOGIN_ATTEMPTS, LOCKOUT_MINUTES
+    MAX_LOGIN_ATTEMPTS, LOCKOUT_MINUTES, IS_PRODUCTION
 )
 from utils.activity_logger import log_activity
 from utils.notifier import create_notification
@@ -40,7 +40,7 @@ def _generate_refresh_token(user_id):
 
 def _set_auth_cookies(response, access_token, refresh_token):
     """Set tokens in secure HttpOnly cookies."""
-    is_prod = False  # set True in production with HTTPS
+    is_prod = IS_PRODUCTION
     response.set_cookie(
         'access_token', access_token,
         httponly=True, secure=is_prod, samesite='Lax',
@@ -127,15 +127,13 @@ def register():
     name     = _sanitize_string(data.get('name', ''), 100)
     email    = _sanitize_string(data.get('email', ''), 100).lower()
     password = data.get('password', '')
-    role     = data.get('role', 'staff')
+    role     = 'staff'
 
     # Validate inputs
     if not name or len(name) < 2:
         return jsonify({'error': 'Name must be at least 2 characters'}), 400
     if not re.match(r'^[^@\s]+@[^@\s]+\.[^@\s]+$', email):
         return jsonify({'error': 'Invalid email address'}), 400
-    if role not in ('admin', 'manager', 'staff'):
-        role = 'staff'
 
     ok, msg = _validate_password_strength(password)
     if not ok:
